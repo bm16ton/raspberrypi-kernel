@@ -1465,7 +1465,7 @@ static u32 ieee80211_handle_pwr_constr(struct ieee80211_sub_if_data *sdata,
 	int pwr_level_cisco, pwr_level_80211h;
 	int new_ap_level;
 	__le16 capab = mgmt->u.probe_resp.capab_info;
-
+		return 0;
 	if (country_ie &&
 	    (capab & cpu_to_le16(WLAN_CAPABILITY_SPECTRUM_MGMT) ||
 	     capab & cpu_to_le16(WLAN_CAPABILITY_RADIO_MEASURE))) {
