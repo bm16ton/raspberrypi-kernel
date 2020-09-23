@@ -185,14 +185,14 @@ static const struct ieee80211_regdomain brcmf_regdom = {
 	.alpha2 =  "99",
 	.reg_rules = {
 		/* IEEE 802.11b/g, channels 1..11 */
-		REG_RULE(2412-10, 2472+10, 40, 6, 20, 0),
+		REG_RULE(2412-10, 2484+10, 40, 6, 20, 0),
 		/* If any */
 		/* IEEE 802.11 channel 14 - Only JP enables
 		 * this and for 802.11b only
 		 */
 		REG_RULE(2484-10, 2484+10, 20, 6, 20, 0),
 		/* IEEE 802.11a, channel 36..64 */
-		REG_RULE(5150-10, 5350+10, 160, 6, 20, 0),
+		REG_RULE(5050-10, 5470+10, 80, 6, 20, 0),
 		/* IEEE 802.11a, channel 100..165 */
 		REG_RULE(5470-10, 5850+10, 160, 6, 20, 0), }
 };
@@ -6133,15 +6133,7 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 			chaninfo = ch.chspec;
 			err = brcmf_fil_bsscfg_int_get(ifp, "per_chan_info",
 						       &chaninfo);
-			if (!err) {
-				if (chaninfo & WL_CHAN_RADAR)
-					channel->flags |=
-						(IEEE80211_CHAN_RADAR |
-						 IEEE80211_CHAN_NO_IR);
-				if (chaninfo & WL_CHAN_PASSIVE)
-					channel->flags |=
-						IEEE80211_CHAN_NO_IR;
-			}
+
 		}
 	}
 
