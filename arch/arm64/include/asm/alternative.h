@@ -14,8 +14,6 @@
 #include <linux/stddef.h>
 #include <linux/stringify.h>
 
-extern int alternatives_applied;
-
 struct alt_instr {
 	s32 orig_offset;	/* offset to original instruction */
 	s32 alt_offset;		/* offset to replacement instruction */
@@ -27,7 +25,9 @@ struct alt_instr {
 typedef void (*alternative_cb_t)(struct alt_instr *alt,
 				 __le32 *origptr, __le32 *updptr, int nr_inst);
 
+void __init apply_boot_alternatives(void);
 void __init apply_alternatives_all(void);
+bool alternative_is_applied(u16 cpufeature);
 
 #ifdef CONFIG_MODULES
 void apply_alternatives_module(void *start, size_t length);
@@ -73,13 +73,13 @@ static inline void apply_alternatives_module(void *start, size_t length) { }
 	".pushsection .altinstructions,\"a\"\n"				\
 	ALTINSTR_ENTRY(feature)						\
 	".popsection\n"							\
-	".pushsection .altinstr_replacement, \"a\"\n"			\
+	".subsection 1\n"						\
 	"663:\n\t"							\
 	newinstr "\n"							\
 	"664:\n\t"							\
-	".popsection\n\t"						\
 	".org	. - (664b-663b) + (662b-661b)\n\t"			\
-	".org	. - (662b-661b) + (664b-663b)\n"			\
+	".org	. - (662b-661b) + (664b-663b)\n\t"			\
+	".previous\n"							\
 	".endif\n"
 
 #define __ALTERNATIVE_CFG_CB(oldinstr, feature, cfg_enabled, cb)	\
@@ -117,9 +117,9 @@ static inline void apply_alternatives_module(void *start, size_t length) { }
 662:	.pushsection .altinstructions, "a"
 	altinstruction_entry 661b, 663f, \cap, 662b-661b, 664f-663f
 	.popsection
-	.pushsection .altinstr_replacement, "ax"
+	.subsection 1
 663:	\insn2
-664:	.popsection
+664:	.previous
 	.org	. - (664b-663b) + (662b-661b)
 	.org	. - (662b-661b) + (664b-663b)
 	.endif
@@ -160,7 +160,7 @@ static inline void apply_alternatives_module(void *start, size_t length) { }
 	.pushsection .altinstructions, "a"
 	altinstruction_entry 663f, 661f, \cap, 664f-663f, 662f-661f
 	.popsection
-	.pushsection .altinstr_replacement, "ax"
+	.subsection 1
 	.align 2	/* So GAS knows label 661 is suitably aligned */
 661:
 .endm
@@ -179,9 +179,9 @@ static inline void apply_alternatives_module(void *start, size_t length) { }
 .macro alternative_else
 662:
 	.if .Lasm_alt_mode==0
-	.pushsection .altinstr_replacement, "ax"
+	.subsection 1
 	.else
-	.popsection
+	.previous
 	.endif
 663:
 .endm
@@ -192,7 +192,7 @@ static inline void apply_alternatives_module(void *start, size_t length) { }
 .macro alternative_endif
 664:
 	.if .Lasm_alt_mode==0
-	.popsection
+	.previous
 	.endif
 	.org	. - (664b-663b) + (662b-661b)
 	.org	. - (662b-661b) + (664b-663b)

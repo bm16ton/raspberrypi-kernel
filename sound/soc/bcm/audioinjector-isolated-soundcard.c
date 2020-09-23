@@ -42,53 +42,37 @@ static int audioinjector_isolated_dai_init(struct snd_soc_pcm_runtime *rtd)
 	int ret=snd_soc_dai_set_sysclk(rtd->codec_dai, 0, 24576000, 0);
 	if (ret)
 		return ret;
-
 	return snd_soc_dai_set_bclk_ratio(rtd->cpu_dai, 64);
 }
 
 static int audioinjector_isolated_startup(struct snd_pcm_substream *substream)
 {
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE, &audioinjector_isolated_constraints);
+			SNDRV_PCM_HW_PARAM_RATE, &audioinjector_isolated_constraints);
 
-	return 0;
-}
-
-static int audioinjector_isolated_trigger(struct snd_pcm_substream *substream,
-								int cmd){
-
-	switch (cmd) {
-	case SNDRV_PCM_TRIGGER_STOP:
-	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		gpiod_set_value(mute_gpio, 0);
-		break;
-	case SNDRV_PCM_TRIGGER_START:
-	case SNDRV_PCM_TRIGGER_RESUME:
-	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		gpiod_set_value(mute_gpio, 1);
-		break;
-	default:
-		return -EINVAL;
-	}
+	gpiod_set_value(mute_gpio, 1);
 	return 0;
 }
 
 static struct snd_soc_ops audioinjector_isolated_ops = {
 	.startup	= audioinjector_isolated_startup,
-	.trigger = audioinjector_isolated_trigger,
 };
+
+SND_SOC_DAILINK_DEFS(audioinjector_isolated,
+	DAILINK_COMP_ARRAY(COMP_CPU("bcm2708-i2s.0")),
+	DAILINK_COMP_ARRAY(COMP_CODEC("cs4271.1-0010", "cs4271-hifi")),
+	DAILINK_COMP_ARRAY(COMP_PLATFORM("bcm2708-i2s.0")));
 
 static struct snd_soc_dai_link audioinjector_isolated_dai[] = {
 	{
 		.name = "AudioInjector ISO",
 		.stream_name = "AI-HIFI",
-		.codec_dai_name = "cs4271-hifi",
 		.ops = &audioinjector_isolated_ops,
 		.init = audioinjector_isolated_dai_init,
 		.symmetric_rates = 1,
 		.symmetric_channels = 1,
 		.dai_fmt = SND_SOC_DAIFMT_CBM_CFM|SND_SOC_DAIFMT_I2S|SND_SOC_DAIFMT_NB_NF,
+		SND_SOC_DAILINK_REG(audioinjector_isolated),
 	}
 };
 
@@ -131,36 +115,28 @@ static int audioinjector_isolated_probe(struct platform_device *pdev)
 		struct snd_soc_dai_link *dai = &audioinjector_isolated_dai[0];
 		struct device_node *i2s_node =
 					of_parse_phandle(pdev->dev.of_node, "i2s-controller", 0);
-		struct device_node *codec_node =
-					of_parse_phandle(pdev->dev.of_node, "codec", 0);
+
+		if (i2s_node) {
+			dai->cpus->dai_name = NULL;
+			dai->cpus->of_node = i2s_node;
+			dai->platforms->name = NULL;
+			dai->platforms->of_node = i2s_node;
+		} else {
+				dev_err(&pdev->dev,
+				"i2s-controller missing or invalid in DT\n");
+				return -EINVAL;
+		}
 
 		mute_gpio = devm_gpiod_get_optional(&pdev->dev, "mute", GPIOD_OUT_LOW);
 		if (IS_ERR(mute_gpio)){
 			dev_err(&pdev->dev, "mute gpio not found in dt overlay\n");
 			return PTR_ERR(mute_gpio);
 		}
-
-		if (i2s_node && codec_node) {
-			dai->cpu_dai_name = NULL;
-			dai->cpu_of_node = i2s_node;
-			dai->platform_name = NULL;
-			dai->platform_of_node = i2s_node;
-			dai->codec_name = NULL;
-			dai->codec_of_node = codec_node;
-		} else
-			if (!i2s_node) {
-				dev_err(&pdev->dev,
-				"i2s-controller missing or invalid in DT\n");
-				return -EINVAL;
-			} else {
-				dev_err(&pdev->dev,
-				"Property 'codec' missing or invalid\n");
-				return -EINVAL;
-			}
+		gpiod_set_value(mute_gpio, 0);
 	}
 
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
-	if (ret != 0)
+	if (ret && ret != -EPROBE_DEFER)
 		dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
 	return ret;
 }

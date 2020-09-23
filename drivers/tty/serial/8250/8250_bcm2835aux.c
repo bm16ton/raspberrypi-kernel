@@ -57,10 +57,8 @@ static int bcm2835aux_serial_probe(struct platform_device *pdev)
 
 	/* get the interrupt */
 	ret = platform_get_irq(pdev, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "irq not found - %i", ret);
+	if (ret < 0)
 		return ret;
-	}
 	data->uart.port.irq = ret;
 
 	/* map the main registers */
@@ -93,6 +91,13 @@ static int bcm2835aux_serial_probe(struct platform_device *pdev)
 	 * to get identical baudrates.
 	 */
 	data->uart.port.uartclk = clk_get_rate(data->clk) * 2;
+
+	/* The clock is only queried at probe time, which means we get one shot
+	 * at this. A zero clock is never going to work and is almost certainly
+	 * due to a parent not being ready, so prefer to defer.
+	 */
+	if (!data->uart.port.uartclk)
+	    return -EPROBE_DEFER;
 
 	/* register the port */
 	ret = serial8250_register_8250_port(&data->uart);

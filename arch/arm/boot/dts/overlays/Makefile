@@ -1,7 +1,10 @@
 # Overlays for the Raspberry Pi platform
 
+dtb-$(CONFIG_ARCH_BCM2835) += overlay_map.dtb
+
 dtbo-$(CONFIG_ARCH_BCM2835) += \
 	act-led.dtbo \
+	adafruit18.dtbo \
 	adau1977-adc.dtbo \
 	adau7002-simple.dtbo \
 	ads1015.dtbo \
@@ -26,7 +29,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	audiosense-pi.dtbo \
 	audremap.dtbo \
 	balena-fin.dtbo \
-	bmp085_i2c-sensor.dtbo \
+	cma.dtbo \
 	dht11.dtbo \
 	dionaudio-loco.dtbo \
 	dionaudio-loco-v2.dtbo \
@@ -62,6 +65,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	hifiberry-dacplushd.dtbo \
 	hifiberry-digi.dtbo \
 	hifiberry-digi-pro.dtbo \
+	highperi.dtbo \
 	hy28a.dtbo \
 	hy28b.dtbo \
 	hy28b-2017.dtbo \
@@ -74,17 +78,16 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	i2c-rtc-gpio.dtbo \
 	i2c-sensor.dtbo \
 	i2c0.dtbo \
-	i2c0-bcm2708.dtbo \
 	i2c1.dtbo \
-	i2c1-bcm2708.dtbo \
 	i2c3.dtbo \
 	i2c4.dtbo \
 	i2c5.dtbo \
 	i2c6.dtbo \
 	i2s-gpio28-31.dtbo \
-	ili9486.dtbo \
 	ilitek251x.dtbo \
 	imx219.dtbo \
+	imx290.dtbo \
+	imx477.dtbo \
 	iqaudio-codec.dtbo \
 	iqaudio-dac.dtbo \
 	iqaudio-dacplus.dtbo \
@@ -94,9 +97,9 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	justboom-both.dtbo \
 	justboom-dac.dtbo \
 	justboom-digi.dtbo \
-	l3g4200d.dtbo \
 	ltc294x.dtbo \
 	max98357a.dtbo \
+	maxtherm.dtbo \
 	mbed-dac.dtbo \
 	mcp23017.dtbo \
 	mcp23s17.dtbo \
@@ -114,12 +117,12 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	mpu6050.dtbo \
 	mz61581.dtbo \
 	ov5647.dtbo \
+	ov7251.dtbo \
+	ov9281.dtbo \
 	papirus.dtbo \
-	pi3-act-led.dtbo \
-	pi3-disable-bt.dtbo \
-	pi3-disable-wifi.dtbo \
-	pi3-miniuart-bt.dtbo \
+	pca953x.dtbo \
 	pibell.dtbo \
+	pifacedigital.dtbo \
 	piglow.dtbo \
 	piscreen.dtbo \
 	piscreen2r.dtbo \
@@ -143,7 +146,9 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	rpi-proto.dtbo \
 	rpi-sense.dtbo \
 	rpi-tv.dtbo \
+	rpivid-v4l2.dtbo \
 	rra-digidac1-wm8741-audio.dtbo \
+	sainsmart18.dtbo \
 	sc16is750-i2c.dtbo \
 	sc16is752-i2c.dtbo \
 	sc16is752-spi0.dtbo \
@@ -158,8 +163,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	spi-gpio35-39.dtbo \
 	spi-gpio40-45.dtbo \
 	spi-rtc.dtbo \
-	spi0-cs.dtbo \
-	spi0-hw-cs.dtbo \
+	spi0-1cs.dtbo \
+	spi0-2cs.dtbo \
 	spi1-1cs.dtbo \
 	spi1-2cs.dtbo \
 	spi1-3cs.dtbo \
@@ -191,11 +196,12 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	uart5.dtbo \
 	udrc.dtbo \
 	upstream.dtbo \
+	upstream-pi4.dtbo \
 	vc4-fkms-v3d.dtbo \
 	vc4-kms-kippah-7inch.dtbo \
 	vc4-kms-v3d.dtbo \
+	vc4-kms-v3d-pi4.dtbo \
 	vga666.dtbo \
-	waveshare-st7789v.dtbo \
 	w1-gpio.dtbo \
 	w1-gpio-pullup.dtbo \
 	w5500.dtbo \

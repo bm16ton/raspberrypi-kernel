@@ -1,17 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Broadcom STB AVS TMON thermal sensor driver
  *
  * Copyright (c) 2015-2017 Broadcom
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
  */
 
 #define DRV_NAME	"brcmstb_thermal"
@@ -19,7 +10,6 @@
 #define pr_fmt(fmt)	DRV_NAME ": " fmt
 
 #include <linux/bitops.h>
-#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/io.h>
@@ -32,6 +22,9 @@
 #include <linux/thermal.h>
 
 #define AVS_TMON_STATUS			0x00
+ #define AVS_TMON_STATUS_valid_msk	BIT(11)
+ #define AVS_TMON_STATUS_data_msk	GENMASK(10, 1)
+ #define AVS_TMON_STATUS_data_shift	1
 
 #define AVS_TMON_EN_OVERTEMP_RESET	0x04
  #define AVS_TMON_EN_OVERTEMP_RESET_msk	BIT(0)
@@ -109,19 +102,10 @@ static struct avs_tmon_trip avs_tmon_trips[] = {
 	},
 };
 
-struct brcmstb_thermal_of_data {
-	const struct thermal_zone_of_device_ops *of_ops;
-	u32 status_valid_mask;
-	u32 status_data_mask;
-	u32 status_data_shift;
-};
-
 struct brcmstb_thermal_priv {
 	void __iomem *tmon_base;
 	struct device *dev;
 	struct thermal_zone_device *thermal;
-	struct clk *clk;
-	const struct brcmstb_thermal_of_data *socdata;
 };
 
 /* Convert a HW code to a temperature reading (millidegree celsius) */
@@ -158,18 +142,17 @@ static inline u32 avs_tmon_temp_to_code(struct thermal_zone_device *tz,
 static int brcmstb_get_temp(void *data, int *temp)
 {
 	struct brcmstb_thermal_priv *priv = data;
-	const struct brcmstb_thermal_of_data *socdata = priv->socdata;
 	u32 val;
 	long t;
 
 	val = __raw_readl(priv->tmon_base + AVS_TMON_STATUS);
 
-	if (!(val & socdata->status_valid_mask)) {
+	if (!(val & AVS_TMON_STATUS_valid_msk)) {
 		dev_err(priv->dev, "reading not valid\n");
 		return -EIO;
 	}
 
-	val = (val & socdata->status_data_mask) >> socdata->status_data_shift;
+	val = (val & AVS_TMON_STATUS_data_msk) >> AVS_TMON_STATUS_data_shift;
 
 	t = avs_tmon_code_to_temp(priv->thermal, val);
 	if (t < 0)
@@ -294,34 +277,13 @@ static int brcmstb_set_trips(void *data, int low, int high)
 	return 0;
 }
 
-static const struct thermal_zone_of_device_ops bcm7445_thermal_of_ops = {
+static const struct thermal_zone_of_device_ops of_ops = {
 	.get_temp	= brcmstb_get_temp,
 	.set_trips	= brcmstb_set_trips,
 };
 
-static const struct thermal_zone_of_device_ops bcm2838_thermal_of_ops = {
-	.get_temp	= brcmstb_get_temp,
-};
-
-static const struct brcmstb_thermal_of_data bcm7445_thermal_of_data = {
-	.of_ops = &bcm7445_thermal_of_ops,
-	.status_valid_mask = BIT(11),
-	.status_data_mask = GENMASK(10, 1),
-	.status_data_shift = 1,
-};
-
-static const struct brcmstb_thermal_of_data bcm2838_thermal_of_data = {
-	.of_ops = &bcm2838_thermal_of_ops,
-	.status_valid_mask = BIT(10),
-	.status_data_mask = GENMASK(9, 0),
-	.status_data_shift = 0,
-};
-
 static const struct of_device_id brcmstb_thermal_id_table[] = {
-	{ .compatible = "brcm,avs-tmon",
-	  .data = &bcm7445_thermal_of_data },
-	{ .compatible = "brcm,avs-tmon-bcm2838",
-	  .data = &bcm2838_thermal_of_data },
+	{ .compatible = "brcm,avs-tmon" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, brcmstb_thermal_id_table);
@@ -342,27 +304,11 @@ static int brcmstb_thermal_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->tmon_base))
 		return PTR_ERR(priv->tmon_base);
 
-	priv->socdata = of_device_get_match_data(&pdev->dev);
-	if (!priv->socdata) {
-		dev_err(&pdev->dev, "no device match found\n");
-		return -ENODEV;
-	}
-
-	priv->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(priv->clk) && PTR_ERR(priv->clk) == -EPROBE_DEFER)
-		return -EPROBE_DEFER;
-
-	if (!IS_ERR(priv->clk)) {
-		ret = clk_prepare_enable(priv->clk);
-		if (ret)
-			return ret;
-	}
-
 	priv->dev = &pdev->dev;
 	platform_set_drvdata(pdev, priv);
 
-	thermal = thermal_zone_of_sensor_register(&pdev->dev, 0, priv,
-						  priv->socdata->of_ops);
+	thermal = devm_thermal_zone_of_sensor_register(&pdev->dev, 0, priv,
+						       &of_ops);
 	if (IS_ERR(thermal)) {
 		ret = PTR_ERR(thermal);
 		dev_err(&pdev->dev, "could not register sensor: %d\n", ret);
@@ -374,43 +320,23 @@ static int brcmstb_thermal_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		dev_err(&pdev->dev, "could not get IRQ\n");
-		ret = irq;
-		goto err;
+		return irq;
 	}
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 					brcmstb_tmon_irq_thread, IRQF_ONESHOT,
 					DRV_NAME, priv);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "could not request IRQ: %d\n", ret);
-		goto err;
+		return ret;
 	}
 
 	dev_info(&pdev->dev, "registered AVS TMON of-sensor driver\n");
-
-	return 0;
-
-err:
-	thermal_zone_of_sensor_unregister(&pdev->dev, thermal);
-	return ret;
-}
-
-static int brcmstb_thermal_exit(struct platform_device *pdev)
-{
-	struct brcmstb_thermal_priv *priv = platform_get_drvdata(pdev);
-	struct thermal_zone_device *thermal = priv->thermal;
-
-	if (thermal)
-		thermal_zone_of_sensor_unregister(&pdev->dev, priv->thermal);
-
-	if (!IS_ERR(priv->clk))
-		clk_disable_unprepare(priv->clk);
 
 	return 0;
 }
 
 static struct platform_driver brcmstb_thermal_driver = {
 	.probe = brcmstb_thermal_probe,
-	.remove = brcmstb_thermal_exit,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = brcmstb_thermal_id_table,
