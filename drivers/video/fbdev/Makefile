@@ -134,5 +134,7 @@ obj-$(CONFIG_FB_SSD1307)	  += ssd1307fb.o
 obj-$(CONFIG_FB_SIMPLE)           += simplefb.o
 obj-$(CONFIG_FB_RPISENSE)	  += rpisense-fb.o
 
+# the usb digital photo frame fb based on virtual/test fb goes here
+obj-$(CONFIG_FB_DPF)          += ax206fb.o
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o
