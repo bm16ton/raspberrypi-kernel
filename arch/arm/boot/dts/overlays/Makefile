@@ -84,6 +84,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	i2c5.dtbo \
 	i2c6.dtbo \
 	i2s-gpio28-31.dtbo \
+	ili9486.dtbo \
 	ilitek251x.dtbo \
 	imx219.dtbo \
 	imx290.dtbo \
@@ -112,6 +113,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	merus-amp.dtbo \
 	midi-uart0.dtbo \
 	midi-uart1.dtbo \
+	minipitft13.dtbo \
 	miniuart-bt.dtbo \
 	mmc.dtbo \
 	mpu6050.dtbo \
