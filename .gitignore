@@ -30,6 +30,7 @@
 *.lz4
 *.lzma
 *.lzo
+*.mod
 *.mod.c
 *.o
 *.o.*
@@ -43,6 +44,9 @@
 *.tab.[ch]
 *.tar
 *.xz
+*.modinfo
+*.rej
+*.gitignore
 Module.symvers
 modules.builtin
 
