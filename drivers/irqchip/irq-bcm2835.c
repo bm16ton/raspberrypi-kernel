@@ -68,6 +68,8 @@
 
 #define REG_FIQ_CONTROL		0x0c
 #define FIQ_CONTROL_ENABLE	BIT(7)
+#define REG_FIQ_ENABLE		FIQ_CONTROL_ENABLE
+#define REG_FIQ_DISABLE	0
 
 #define NR_BANKS		3
 #define IRQS_PER_BANK		32
@@ -115,7 +117,7 @@ static inline unsigned int hwirq_to_fiq(unsigned long hwirq)
 static void armctrl_mask_irq(struct irq_data *d)
 {
 	if (d->hwirq >= NUMBER_IRQS)
-		writel_relaxed(0, intc.base + REG_FIQ_CONTROL);
+		writel_relaxed(REG_FIQ_DISABLE, intc.base + REG_FIQ_CONTROL);
 	else
 		writel_relaxed(HWIRQ_BIT(d->hwirq),
 			       intc.disable[HWIRQ_BANK(d->hwirq)]);
@@ -142,7 +144,7 @@ static void armctrl_unmask_irq(struct irq_data *d)
 				       ARM_LOCAL_GPU_INT_ROUTING);
 		}
 
-		writel_relaxed(FIQ_CONTROL_ENABLE | hwirq_to_fiq(d->hwirq),
+		writel_relaxed(REG_FIQ_ENABLE | hwirq_to_fiq(d->hwirq),
 			       intc.base + REG_FIQ_CONTROL);
 	} else {
 		writel_relaxed(HWIRQ_BIT(d->hwirq),

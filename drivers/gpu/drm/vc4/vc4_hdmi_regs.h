@@ -3,15 +3,6 @@
 
 #include "vc4_hdmi.h"
 
-#define VC4_MASK(high, low) ((u32)GENMASK(high, low))
-/* Using the GNU statement expression extension */
-#define VC4_SET_FIELD(value, field)					\
-	({								\
-		uint32_t fieldval = (value) << field##_SHIFT;		\
-		WARN_ON((fieldval & ~field##_MASK) != 0);		\
-		fieldval & field##_MASK;				\
-	 })
-
 #define VC4_HDMI_PACKET_STRIDE			0x24
 
 enum vc4_hdmi_regs {
@@ -420,13 +411,13 @@ void __iomem *__vc4_hdmi_get_field_base(struct vc4_hdmi *hdmi,
 }
 
 static inline u32 vc4_hdmi_read(struct vc4_hdmi *hdmi,
-				enum vc4_hdmi_regs reg)
+				enum vc4_hdmi_field reg)
 {
 	const struct vc4_hdmi_register *field;
 	const struct vc4_hdmi_variant *variant = hdmi->variant;
 	void __iomem *base;
 
-	if (reg > variant->num_registers) {
+	if (reg >= variant->num_registers) {
 		dev_warn(&hdmi->pdev->dev,
 			 "Invalid register ID %u\n", reg);
 		return 0;
@@ -445,14 +436,14 @@ static inline u32 vc4_hdmi_read(struct vc4_hdmi *hdmi,
 #define HDMI_READ(reg)		vc4_hdmi_read(vc4_hdmi, reg)
 
 static inline void vc4_hdmi_write(struct vc4_hdmi *hdmi,
-				  enum vc4_hdmi_regs reg,
+				  enum vc4_hdmi_field reg,
 				  u32 value)
 {
 	const struct vc4_hdmi_register *field;
 	const struct vc4_hdmi_variant *variant = hdmi->variant;
 	void __iomem *base;
 
-	if (reg > variant->num_registers) {
+	if (reg >= variant->num_registers) {
 		dev_warn(&hdmi->pdev->dev,
 			 "Invalid register ID %u\n", reg);
 		return;

@@ -11,8 +11,8 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
 #include <linux/reboot.h>
+#include <linux/slab.h>
 #include <soc/bcm2835/raspberrypi-firmware.h>
 
 #define MBOX_MSG(chan, data28)		(((data28) & ~0xf) | ((chan) & 0xf))
@@ -21,6 +21,7 @@
 #define MBOX_CHAN_PROPERTY		8
 
 static struct platform_device *rpi_hwmon;
+static struct platform_device *rpi_clk;
 
 struct rpi_firmware {
 	struct mbox_client cl;
@@ -190,6 +191,7 @@ static int rpi_firmware_notify_reboot(struct notifier_block *nb,
 {
 	struct rpi_firmware *fw;
 	struct platform_device *pdev = g_pdev;
+	u32 reboot_flags = 0;
 
 	if (!pdev)
 		return 0;
@@ -198,8 +200,28 @@ static int rpi_firmware_notify_reboot(struct notifier_block *nb,
 	if (!fw)
 		return 0;
 
-	(void)rpi_firmware_property(fw, RPI_FIRMWARE_NOTIFY_REBOOT,
-				    0, 0);
+	// The partition id is the first parameter followed by zero or
+	// more flags separated by spaces indicating the reason for the reboot.
+	//
+	// 'tryboot': Sets a one-shot flag which is cleared upon reboot and
+	//            causes the tryboot.txt to be loaded instead of config.txt
+	//            by the bootloader and the start.elf firmware.
+	//
+	//            This is intended to allow automatic fallback to a known
+	//            good image if an OS/FW upgrade fails.
+	//
+	// N.B. The firmware mechanism for storing reboot flags may vary
+	// on different Raspberry Pi models.
+	if (data && strstr(data, " tryboot"))
+		reboot_flags |= 0x1;
+
+	// The mailbox might have been called earlier, directly via vcmailbox
+	// so only overwrite if reboot flags are passed to the reboot command.
+	if (reboot_flags)
+		(void)rpi_firmware_property(fw, RPI_FIRMWARE_SET_REBOOT_FLAGS,
+				&reboot_flags, sizeof(reboot_flags));
+
+	(void)rpi_firmware_property(fw, RPI_FIRMWARE_NOTIFY_REBOOT, NULL, 0);
 
 	return 0;
 }
@@ -228,6 +250,8 @@ static const struct attribute_group rpi_firmware_dev_group = {
 static void
 rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
 {
+	time64_t date_and_time;
+	u32 packet;
 	static const char * const variant_strs[] = {
 		"unknown",
 		"start",
@@ -236,15 +260,16 @@ rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
 		"start_cd",
 	};
 	const char *variant_str = "cmd unsupported";
-	u32 packet;
 	u32 variant;
-	struct tm tm;
 	int ret = rpi_firmware_property(fw,
 					RPI_FIRMWARE_GET_FIRMWARE_REVISION,
 					&packet, sizeof(packet));
 
 	if (ret)
 		return;
+
+	/* This is not compatible with y2038 */
+	date_and_time = packet;
 
 	ret = rpi_firmware_property(fw, RPI_FIRMWARE_GET_FIRMWARE_VARIANT,
 				    &variant, sizeof(variant));
@@ -255,12 +280,9 @@ rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
 		variant_str = variant_strs[variant];
 	}
 
-	time64_to_tm(packet, 0, &tm);
-
 	dev_info(fw->cl.dev,
-		 "Attached to firmware from %04ld-%02d-%02d %02d:%02d, variant %s\n",
-		 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
-		 tm.tm_min, variant_str);
+		 "Attached to firmware from %ptT, variant %s\n",
+		 &date_and_time, variant_str);
 }
 
 static void
@@ -298,6 +320,26 @@ rpi_register_hwmon_driver(struct device *dev, struct rpi_firmware *fw)
 	}
 }
 
+static void rpi_register_clk_driver(struct device *dev)
+{
+	struct device_node *firmware;
+
+	/*
+	 * Earlier DTs don't have a node for the firmware clocks but
+	 * rely on us creating a platform device by hand. If we do
+	 * have a node for the firmware clocks, just bail out here.
+	 */
+	firmware = of_get_compatible_child(dev->of_node,
+					   "raspberrypi,firmware-clocks");
+	if (firmware) {
+		of_node_put(firmware);
+		return;
+	}
+
+	rpi_clk = platform_device_register_data(dev, "raspberrypi-clk",
+						-1, NULL, 0);
+}
+
 static int rpi_firmware_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -327,6 +369,7 @@ static int rpi_firmware_probe(struct platform_device *pdev)
 	rpi_firmware_print_firmware_revision(fw);
 	rpi_firmware_print_firmware_hash(fw);
 	rpi_register_hwmon_driver(dev, fw);
+	rpi_register_clk_driver(dev);
 
 	return 0;
 }
@@ -347,6 +390,8 @@ static int rpi_firmware_remove(struct platform_device *pdev)
 
 	platform_device_unregister(rpi_hwmon);
 	rpi_hwmon = NULL;
+	platform_device_unregister(rpi_clk);
+	rpi_clk = NULL;
 	mbox_free_channel(fw->chan);
 	g_pdev = NULL;
 

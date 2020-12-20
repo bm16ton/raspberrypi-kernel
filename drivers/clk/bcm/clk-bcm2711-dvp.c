@@ -18,13 +18,16 @@ struct clk_dvp {
 	struct reset_simple_data	reset;
 };
 
+static const struct clk_parent_data clk_dvp_parent = {
+	.index	= 0,
+};
+
 static int clk_dvp_probe(struct platform_device *pdev)
 {
 	struct clk_hw_onecell_data *data;
 	struct resource *res;
 	struct clk_dvp *dvp;
 	void __iomem *base;
-	const char *parent;
 	int ret;
 
 	dvp = devm_kzalloc(&pdev->dev, sizeof(*dvp), GFP_KERNEL);
@@ -39,8 +42,7 @@ static int clk_dvp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	data = dvp->data;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	base = devm_ioremap_resource(&pdev->dev, res);
+	base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -51,27 +53,25 @@ static int clk_dvp_probe(struct platform_device *pdev)
 	dvp->reset.membase = base + DVP_HT_RPI_SW_INIT;
 	spin_lock_init(&dvp->reset.lock);
 
-	ret = reset_controller_register(&dvp->reset.rcdev);
+	ret = devm_reset_controller_register(&pdev->dev, &dvp->reset.rcdev);
 	if (ret)
 		return ret;
 
-	parent = of_clk_get_parent_name(pdev->dev.of_node, 0);
-	if (!parent)
-		goto unregister_reset;
+	data->hws[0] = clk_hw_register_gate_parent_data(&pdev->dev,
+							"hdmi0-108MHz",
+							&clk_dvp_parent, 0,
+							base + DVP_HT_RPI_MISC_CONFIG, 3,
+							CLK_GATE_SET_TO_DISABLE,
+							&dvp->reset.lock);
+	if (IS_ERR(data->hws[0]))
+		return PTR_ERR(data->hws[0]);
 
-	data->hws[0] = clk_hw_register_gate(&pdev->dev, "hdmi0-108MHz",
-					    parent, 0,
-					    base + DVP_HT_RPI_MISC_CONFIG, 3,
-					    CLK_GATE_SET_TO_DISABLE, &dvp->reset.lock);
-	if (IS_ERR(data->hws[0])) {
-		ret = PTR_ERR(data->hws[0]);
-		goto unregister_reset;
-	}
-
-	data->hws[1] = clk_hw_register_gate(&pdev->dev, "hdmi1-108MHz",
-					    parent, 0,
-					    base + DVP_HT_RPI_MISC_CONFIG, 4,
-					    CLK_GATE_SET_TO_DISABLE, &dvp->reset.lock);
+	data->hws[1] = clk_hw_register_gate_parent_data(&pdev->dev,
+							"hdmi1-108MHz",
+							&clk_dvp_parent, 0,
+							base + DVP_HT_RPI_MISC_CONFIG, 4,
+							CLK_GATE_SET_TO_DISABLE,
+							&dvp->reset.lock);
 	if (IS_ERR(data->hws[1])) {
 		ret = PTR_ERR(data->hws[1]);
 		goto unregister_clk0;
@@ -85,15 +85,11 @@ static int clk_dvp_probe(struct platform_device *pdev)
 
 	return 0;
 
-
 unregister_clk1:
 	clk_hw_unregister_gate(data->hws[1]);
 
 unregister_clk0:
 	clk_hw_unregister_gate(data->hws[0]);
-
-unregister_reset:
-	reset_controller_unregister(&dvp->reset.rcdev);
 	return ret;
 };
 
@@ -104,7 +100,6 @@ static int clk_dvp_remove(struct platform_device *pdev)
 
 	clk_hw_unregister_gate(data->hws[1]);
 	clk_hw_unregister_gate(data->hws[0]);
-	reset_controller_unregister(&dvp->reset.rcdev);
 
 	return 0;
 }
@@ -123,3 +118,7 @@ static struct platform_driver clk_dvp_driver = {
 	},
 };
 module_platform_driver(clk_dvp_driver);
+
+MODULE_AUTHOR("Maxime Ripard <maxime@cerno.tech>");
+MODULE_DESCRIPTION("BCM2711 DVP clock driver");
+MODULE_LICENSE("GPL");

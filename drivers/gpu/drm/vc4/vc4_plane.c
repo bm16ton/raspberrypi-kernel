@@ -149,10 +149,9 @@ static const struct hvs_format *vc4_get_hvs_format(u32 drm_format)
 	return NULL;
 }
 
-static enum vc4_scaling_mode vc4_get_scaling_mode(u32 src, u32 dst,
-						  bool chroma_vrep)
+static enum vc4_scaling_mode vc4_get_scaling_mode(u32 src, u32 dst)
 {
-	if (dst == src && !chroma_vrep)
+	if (dst == src)
 		return VC4_SCALING_NONE;
 	if (3 * dst >= 2 * src)
 		return VC4_SCALING_PPF;
@@ -162,7 +161,7 @@ static enum vc4_scaling_mode vc4_get_scaling_mode(u32 src, u32 dst,
 
 static bool plane_enabled(struct drm_plane_state *state)
 {
-	return state->fb && state->crtc;
+	return state->fb && !WARN_ON(!state->crtc);
 }
 
 static struct drm_plane_state *vc4_plane_duplicate_state(struct drm_plane *plane)
@@ -201,7 +200,7 @@ static void vc4_plane_destroy_state(struct drm_plane *plane,
 	struct vc4_dev *vc4 = to_vc4_dev(plane->dev);
 	struct vc4_plane_state *vc4_state = to_vc4_plane_state(state);
 
-	if (vc4_state->lbm.allocated) {
+	if (drm_mm_node_allocated(&vc4_state->lbm)) {
 		unsigned long irqflags;
 
 		spin_lock_irqsave(&vc4->hvs->mm_lock, irqflags);
@@ -377,11 +376,9 @@ static int vc4_plane_setup_clipping_and_scaling(struct drm_plane_state *state)
 		return ret;
 
 	vc4_state->x_scaling[0] = vc4_get_scaling_mode(vc4_state->src_w[0],
-						       vc4_state->crtc_w,
-						       false);
+						       vc4_state->crtc_w);
 	vc4_state->y_scaling[0] = vc4_get_scaling_mode(vc4_state->src_h[0],
-						       vc4_state->crtc_h,
-						       false);
+						       vc4_state->crtc_h);
 
 	vc4_state->is_unity = (vc4_state->x_scaling[0] == VC4_SCALING_NONE &&
 			       vc4_state->y_scaling[0] == VC4_SCALING_NONE);
@@ -394,12 +391,10 @@ static int vc4_plane_setup_clipping_and_scaling(struct drm_plane_state *state)
 
 		vc4_state->x_scaling[1] =
 			vc4_get_scaling_mode(vc4_state->src_w[1],
-					     vc4_state->crtc_w,
-					     v_subsample == 2);
+					     vc4_state->crtc_w);
 		vc4_state->y_scaling[1] =
 			vc4_get_scaling_mode(vc4_state->src_h[1],
-					     vc4_state->crtc_h,
-					     v_subsample == 2);
+					     vc4_state->crtc_h);
 
 		/* YUV conversion requires that horizontal scaling be enabled
 		 * on the UV plane even if vc4_get_scaling_mode() returned
@@ -457,6 +452,13 @@ static u32 vc4_lbm_size(struct drm_plane_state *state)
 	    vc4_state->y_scaling[1] == VC4_SCALING_NONE)
 		return 0;
 
+	/*
+	 * This can be further optimized in the RGB/YUV444 case if the PPF
+	 * decimation factor is between 0.5 and 1.0 by using crtc_w.
+	 *
+	 * It's not an issue though, since in that case since src_w[0] is going
+	 * to be greater than or equal to crtc_w.
+	 */
 	if (vc4_state->x_scaling[0] == VC4_SCALING_TPZ)
 		pix_per_line = vc4_state->crtc_w;
 	else
@@ -591,7 +593,7 @@ static int vc4_plane_allocate_lbm(struct drm_plane_state *state)
 	/* Allocate the LBM memory that the HVS will use for temporary
 	 * storage due to our scaling/format conversion.
 	 */
-	if (!vc4_state->lbm.allocated) {
+	if (!drm_mm_node_allocated(&vc4_state->lbm)) {
 		int ret;
 
 		spin_lock_irqsave(&vc4->hvs->mm_lock, irqflags);
@@ -1452,6 +1454,8 @@ struct drm_plane *vc4_plane_init(struct drm_device *dev,
 				       &vc4_plane_funcs,
 				       formats, num_formats,
 				       modifiers, type, NULL);
+	if (ret)
+		return ERR_PTR(ret);
 
 	drm_plane_helper_add(plane, &vc4_plane_helper_funcs);
 

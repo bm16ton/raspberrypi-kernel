@@ -535,7 +535,7 @@ static int imx290_set_register_array(struct imx290 *imx290,
 	}
 
 	/* Provide 10ms settle time */
-	msleep(10);
+	usleep_range(10000, 11000);
 
 	return 0;
 }
@@ -673,14 +673,14 @@ static int imx290_set_ctrl(struct v4l2_ctrl *ctrl)
 		if (ctrl->val) {
 			imx290_write_reg(imx290, IMX290_BLKLEVEL_LOW, 0x00);
 			imx290_write_reg(imx290, IMX290_BLKLEVEL_HIGH, 0x00);
-			msleep(10);
+			usleep_range(10000, 11000);
 			imx290_write_reg(imx290, IMX290_PGCTRL,
 					 (u8)(IMX290_PGCTRL_REGEN |
 					 IMX290_PGCTRL_THRU |
 					 IMX290_PGCTRL_MODE(ctrl->val)));
 		} else {
 			imx290_write_reg(imx290, IMX290_PGCTRL, 0x00);
-			msleep(10);
+			usleep_range(10000, 11000);
 			if (imx290->bpp == 10)
 				imx290_write_reg(imx290, IMX290_BLKLEVEL_LOW,
 						 0x3c);
@@ -1397,6 +1397,9 @@ static int imx290_probe(struct i2c_client *client)
 		dev_err(dev, "Could not register media entity\n");
 		goto free_ctrl;
 	}
+
+	/* Initialize the frame format (this also sets imx290->current_mode) */
+	imx290_entity_init_cfg(&imx290->sd, NULL);
 
 	ret = v4l2_async_register_subdev(&imx290->sd);
 	if (ret < 0) {

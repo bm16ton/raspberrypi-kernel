@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2016 Broadcom
  *
@@ -274,23 +275,6 @@ static inline struct vc4_crtc *to_vc4_crtc(struct drm_crtc *crtc)
 	return container_of(crtc, struct vc4_crtc, base);
 }
 
-struct fkms_crtc_state {
-	struct drm_crtc_state base;
-
-	struct {
-		unsigned int left;
-		unsigned int right;
-		unsigned int top;
-		unsigned int bottom;
-	} margins;
-};
-
-static inline struct fkms_crtc_state *
-to_fkms_crtc_state(struct drm_crtc_state *crtc_state)
-{
-	return (struct fkms_crtc_state *)crtc_state;
-}
-
 struct vc4_fkms_encoder {
 	struct drm_encoder base;
 	bool hdmi_monitor;
@@ -424,7 +408,7 @@ static void vc4_fkms_crtc_get_margins(struct drm_crtc_state *state,
 				      unsigned int *left, unsigned int *right,
 				      unsigned int *top, unsigned int *bottom)
 {
-	struct fkms_crtc_state *vc4_state = to_fkms_crtc_state(state);
+	struct vc4_crtc_state *vc4_state = to_vc4_crtc_state(state);
 	struct drm_connector_state *conn_state;
 	struct drm_connector *conn;
 	int i;
@@ -437,7 +421,7 @@ static void vc4_fkms_crtc_get_margins(struct drm_crtc_state *state,
 	/* We have to interate over all new connector states because
 	 * vc4_fkms_crtc_get_margins() might be called before
 	 * vc4_fkms_crtc_atomic_check() which means margins info in
-	 * fkms_crtc_state might be outdated.
+	 * vc4_crtc_state might be outdated.
 	 */
 	for_each_new_connector_in_state(state->state, conn, conn_state, i) {
 		if (conn_state->crtc != state->crtc)
@@ -684,7 +668,6 @@ static int vc4_plane_atomic_check(struct drm_plane *plane,
 		return 0;
 
 	return vc4_plane_to_mb(plane, &vc4_plane->mb, state);
-
 }
 
 /* Called during init to allocate the plane's atomic state. */
@@ -981,24 +964,25 @@ static void vc4_crtc_mode_set_nofb(struct drm_crtc *crtc)
 	}
 
 	/*
-	FIXME: To implement
-	switch(mode->flag & DRM_MODE_FLAG_3D_MASK) {
-	case DRM_MODE_FLAG_3D_NONE:
-	case DRM_MODE_FLAG_3D_FRAME_PACKING:
-	case DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE:
-	case DRM_MODE_FLAG_3D_LINE_ALTERNATIVE:
-	case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL:
-	case DRM_MODE_FLAG_3D_L_DEPTH:
-	case DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH:
-	case DRM_MODE_FLAG_3D_TOP_AND_BOTTOM:
-	case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF:
-	}
-	*/
+	 * FIXME: To implement
+	 * switch(mode->flag & DRM_MODE_FLAG_3D_MASK) {
+	 * case DRM_MODE_FLAG_3D_NONE:
+	 * case DRM_MODE_FLAG_3D_FRAME_PACKING:
+	 * case DRM_MODE_FLAG_3D_FIELD_ALTERNATIVE:
+	 * case DRM_MODE_FLAG_3D_LINE_ALTERNATIVE:
+	 * case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_FULL:
+	 * case DRM_MODE_FLAG_3D_L_DEPTH:
+	 * case DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH:
+	 * case DRM_MODE_FLAG_3D_TOP_AND_BOTTOM:
+	 * case DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF:
+	 * }
+	 */
 
 	ret = rpi_firmware_property_list(vc4->firmware, &mb, sizeof(mb));
 }
 
-static void vc4_crtc_disable(struct drm_crtc *crtc, struct drm_crtc_state *old_state)
+static void vc4_crtc_disable(struct drm_crtc *crtc,
+			     struct drm_atomic_state *state)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_plane *plane;
@@ -1050,7 +1034,8 @@ static void vc4_crtc_consume_event(struct drm_crtc *crtc)
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
-static void vc4_crtc_enable(struct drm_crtc *crtc, struct drm_crtc_state *old_state)
+static void vc4_crtc_enable(struct drm_crtc *crtc,
+			    struct drm_atomic_state *state)
 {
 	struct drm_plane *plane;
 
@@ -1124,7 +1109,7 @@ vc4_crtc_mode_valid(struct drm_crtc *crtc, const struct drm_display_mode *mode)
 static int vc4_crtc_atomic_check(struct drm_crtc *crtc,
 				 struct drm_crtc_state *state)
 {
-	struct fkms_crtc_state *vc4_state = to_fkms_crtc_state(state);
+	struct vc4_crtc_state *vc4_state = to_vc4_crtc_state(state);
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
 	int i;
@@ -1218,10 +1203,11 @@ static irqreturn_t vc4_crtc_irq_handler(int irq, void *data)
 	return ret;
 }
 
-static int vc4_page_flip(struct drm_crtc *crtc,
-			 struct drm_framebuffer *fb,
-			 struct drm_pending_vblank_event *event,
-			 uint32_t flags, struct drm_modeset_acquire_ctx *ctx)
+static int vc4_fkms_page_flip(struct drm_crtc *crtc,
+			      struct drm_framebuffer *fb,
+			      struct drm_pending_vblank_event *event,
+			      uint32_t flags,
+			      struct drm_modeset_acquire_ctx *ctx)
 {
 	if (flags & DRM_MODE_PAGE_FLIP_ASYNC) {
 		DRM_ERROR("Async flips aren't allowed\n");
@@ -1232,15 +1218,15 @@ static int vc4_page_flip(struct drm_crtc *crtc,
 }
 
 static struct drm_crtc_state *
-vc4_crtc_duplicate_state(struct drm_crtc *crtc)
+vc4_fkms_crtc_duplicate_state(struct drm_crtc *crtc)
 {
-	struct fkms_crtc_state *vc4_state, *old_vc4_state;
+	struct vc4_crtc_state *vc4_state, *old_vc4_state;
 
 	vc4_state = kzalloc(sizeof(*vc4_state), GFP_KERNEL);
 	if (!vc4_state)
 		return NULL;
 
-	old_vc4_state = to_fkms_crtc_state(crtc->state);
+	old_vc4_state = to_vc4_crtc_state(crtc->state);
 	vc4_state->margins = old_vc4_state->margins;
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &vc4_state->base);
@@ -1248,7 +1234,7 @@ vc4_crtc_duplicate_state(struct drm_crtc *crtc)
 }
 
 static void
-vc4_crtc_reset(struct drm_crtc *crtc)
+vc4_fkms_crtc_reset(struct drm_crtc *crtc)
 {
 	if (crtc->state)
 		__drm_atomic_helper_crtc_destroy_state(crtc->state);
@@ -1281,12 +1267,12 @@ static void vc4_fkms_disable_vblank(struct drm_crtc *crtc)
 static const struct drm_crtc_funcs vc4_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.destroy = drm_crtc_cleanup,
-	.page_flip = vc4_page_flip,
+	.page_flip = vc4_fkms_page_flip,
 	.set_property = NULL,
 	.cursor_set = NULL, /* handled by drm_mode_cursor_universal */
 	.cursor_move = NULL, /* handled by drm_mode_cursor_universal */
-	.reset = vc4_crtc_reset,
-	.atomic_duplicate_state = vc4_crtc_duplicate_state,
+	.reset = vc4_fkms_crtc_reset,
+	.atomic_duplicate_state = vc4_fkms_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.enable_vblank = vc4_fkms_enable_vblank,
 	.disable_vblank = vc4_fkms_disable_vblank,
@@ -1626,9 +1612,8 @@ vc4_fkms_connector_init(struct drm_device *dev, struct drm_encoder *encoder,
 
 	fkms_connector = devm_kzalloc(dev->dev, sizeof(*fkms_connector),
 				      GFP_KERNEL);
-	if (!fkms_connector) {
+	if (!fkms_connector)
 		return ERR_PTR(-ENOMEM);
-	}
 
 	/*
 	 * Allocate enough memory to hold vc4_fkms_connector_state,
@@ -1795,7 +1780,7 @@ static int vc4_fkms_create_screen(struct device *dev, struct drm_device *drm,
 	vc4_crtc->encoder = &vc4_encoder->base;
 
 	vc4_encoder->display_num = display_ref;
-	vc4_encoder->base.possible_crtcs |= drm_crtc_mask(crtc) ;
+	vc4_encoder->base.possible_crtcs |= drm_crtc_mask(crtc);
 
 	drm_encoder_init(drm, &vc4_encoder->base, &vc4_fkms_encoder_funcs,
 			 vc4_crtc->display_type, NULL);
@@ -1818,7 +1803,7 @@ err_destroy_encoder:
 	list_for_each_entry_safe(destroy_plane, temp,
 				 &drm->mode_config.plane_list, head) {
 		if (destroy_plane->possible_crtcs == 1 << drm_crtc_index(crtc))
-		    destroy_plane->funcs->destroy(destroy_plane);
+			destroy_plane->funcs->destroy(destroy_plane);
 	}
 err:
 	return ret;
@@ -1848,12 +1833,6 @@ static int vc4_fkms_bind(struct device *dev, struct device *master, void *data)
 		return -ENODEV;
 	if (match->data)
 		fkms->bcm2711 = true;
-
-	/* firmware kms doesn't have precise a scanoutpos implementation, so
-	 * we can't do the precise vblank timestamp mode.
-	 */
-	drm->driver->get_scanout_position = NULL;
-	drm->driver->get_vblank_timestamp = NULL;
 
 	firmware_node = of_parse_phandle(dev->of_node, "brcm,firmware", 0);
 	vc4->firmware = rpi_firmware_get(firmware_node);

@@ -436,7 +436,7 @@ static void omap_crtc_arm_event(struct drm_crtc *crtc)
 }
 
 static void omap_crtc_atomic_enable(struct drm_crtc *crtc,
-				    struct drm_crtc_state *old_state)
+				    struct drm_atomic_state *state)
 {
 	struct omap_drm_private *priv = crtc->dev->dev_private;
 	struct omap_crtc *omap_crtc = to_omap_crtc(crtc);
@@ -462,7 +462,7 @@ static void omap_crtc_atomic_enable(struct drm_crtc *crtc,
 }
 
 static void omap_crtc_atomic_disable(struct drm_crtc *crtc,
-				     struct drm_crtc_state *old_state)
+				     struct drm_atomic_state *state)
 {
 	struct omap_drm_private *priv = crtc->dev->dev_private;
 	struct omap_crtc *omap_crtc = to_omap_crtc(crtc);
@@ -698,14 +698,16 @@ static int omap_crtc_atomic_get_property(struct drm_crtc *crtc,
 
 static void omap_crtc_reset(struct drm_crtc *crtc)
 {
+	struct omap_crtc_state *state;
+
 	if (crtc->state)
 		__drm_atomic_helper_crtc_destroy_state(crtc->state);
 
 	kfree(crtc->state);
-	crtc->state = kzalloc(sizeof(struct omap_crtc_state), GFP_KERNEL);
 
-	if (crtc->state)
-		crtc->state->crtc = crtc;
+	state = kzalloc(sizeof(*state), GFP_KERNEL);
+	if (state)
+		__drm_atomic_helper_crtc_reset(crtc, &state->base);
 }
 
 static struct drm_crtc_state *
@@ -832,7 +834,7 @@ struct drm_crtc *omap_crtc_init(struct drm_device *dev,
 	 * OMAP_DSS_CHANNEL_DIGIT. X server assumes 256 element gamma
 	 * tables so lets use that. Size of HW gamma table can be
 	 * extracted with dispc_mgr_gamma_size(). If it returns 0
-	 * gamma table is not supprted.
+	 * gamma table is not supported.
 	 */
 	if (priv->dispc_ops->mgr_gamma_size(priv->dispc, channel)) {
 		unsigned int gamma_lut_size = 256;

@@ -38,6 +38,7 @@
 #include <linux/cred.h>
 #include <soc/bcm2835/raspberrypi-firmware.h>
 #include <linux/mutex.h>
+#include <linux/compat.h>
 
 //#define BCM2708_FB_DEBUG
 #define MODULE_NAME "bcm2708_fb"
@@ -196,32 +197,19 @@ static int bcm2708_fb_debugfs_init(struct bcm2708_fb *fb)
 	fbdev->dma_stats.regset.nregs = ARRAY_SIZE(stats_registers);
 	fbdev->dma_stats.regset.base = &fbdev->dma_stats;
 
-	if (!debugfs_create_regset32("dma_stats", 0444, fb->debugfs_subdir,
-				     &fbdev->dma_stats.regset)) {
-		dev_warn(fb->fb.dev, "%s: could not create statistics registers\n",
-			 __func__);
-		goto fail;
-	}
+	debugfs_create_regset32("dma_stats", 0444, fb->debugfs_subdir,
+				&fbdev->dma_stats.regset);
 
 	fb->screeninfo_regset.regs = screeninfo;
 	fb->screeninfo_regset.nregs = ARRAY_SIZE(screeninfo);
 	fb->screeninfo_regset.base = &fb->fb.var;
 
-	if (!debugfs_create_regset32("screeninfo", 0444, fb->debugfs_subdir,
-				     &fb->screeninfo_regset)) {
-		dev_warn(fb->fb.dev,
-			 "%s: could not create dimensions registers\n",
-			 __func__);
-		goto fail;
-	}
+	debugfs_create_regset32("screeninfo", 0444, fb->debugfs_subdir,
+				&fb->screeninfo_regset);
 
 	fbdev->instance_count++;
 
 	return 0;
-
-fail:
-	bcm2708_fb_debugfs_deinit(fb);
-	return -EFAULT;
 }
 
 static void set_display_num(struct bcm2708_fb *fb)
@@ -705,7 +693,8 @@ static long vc_mem_copy(struct bcm2708_fb *fb, struct fb_dmacopy *ioparam)
 		u8 *q = (u8 *)ioparam->dst + offset;
 
 		dma_memcpy(fb, bus_addr,
-			   INTALIAS_L1L2_NONALLOCATING((dma_addr_t)p), size);
+			   INTALIAS_L1L2_NONALLOCATING((u32)(uintptr_t)p),
+						       size);
 		if (copy_to_user(q, buf, s) != 0) {
 			pr_err("[%s]: failed to copy-to-user\n", __func__);
 			rc = -EFAULT;

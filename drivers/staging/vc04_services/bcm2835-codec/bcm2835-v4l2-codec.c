@@ -4,7 +4,7 @@
  * A v4l2-mem2mem device that wraps the video codec MMAL component.
  *
  * Copyright 2018 Raspberry Pi (Trading) Ltd.
- * Author: Dave Stevenson (dave.stevenson@raspberrypi.org)
+ * Author: Dave Stevenson (dave.stevenson@raspberrypi.com)
  *
  * Loosely based on the vim2m virtual driver by Pawel Osciak
  * Copyright (c) 2009-2010 Samsung Electronics Co., Ltd.
@@ -61,7 +61,7 @@ MODULE_PARM_DESC(isp_video_nr, "isp video device number");
 /*
  * Workaround for GStreamer v4l2convert component not considering Bayer formats
  * as raw, and therefore not considering a V4L2 device that supports them as
- * as a suitable candidate.
+ * a suitable candidate.
  */
 static bool disable_bayer;
 module_param(disable_bayer, bool, 0644);
@@ -88,6 +88,9 @@ static const char * const components[] = {
 	"ril.video_encode",
 	"ril.isp",
 };
+
+/* Timeout for stop_streaming to allow all buffers to return */
+#define COMPLETE_TIMEOUT (2 * HZ)
 
 #define MIN_W		32
 #define MIN_H		32
@@ -944,6 +947,7 @@ static void vb2_to_mmal_buffer(struct m2m_mmal_buffer *buf,
 			       struct vb2_v4l2_buffer *vb2)
 {
 	u64 pts;
+
 	buf->mmal.mmal_flags = 0;
 	if (vb2->flags & V4L2_BUF_FLAG_KEYFRAME)
 		buf->mmal.mmal_flags |= MMAL_BUFFER_HEADER_FLAG_KEYFRAME;
@@ -1205,9 +1209,9 @@ static int vidioc_s_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	bool update_capture_port = false;
 	int ret;
 
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: " V4L2_FOURCC_CONV ", size %u\n",
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,	"Setting format for type %d, wxh: %dx%d, fmt: %08x, size %u\n",
 		 f->type, f->fmt.pix_mp.width, f->fmt.pix_mp.height,
-		 V4L2_FOURCC_CONV_ARGS(f->fmt.pix_mp.pixelformat),
+		 f->fmt.pix_mp.pixelformat,
 		 f->fmt.pix_mp.plane_fmt[0].sizeimage);
 
 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, f->type);
@@ -1997,6 +2001,19 @@ static int bcm2835_codec_create_component(struct bcm2835_codec_ctx *ctx)
 				      MMAL_PARAMETER_ZERO_COPY, &enable,
 				      sizeof(enable));
 
+	if (dev->role == DECODE) {
+		/*
+		 * Disable firmware option that ensures decoded timestamps
+		 * always increase.
+		 */
+		enable = 0;
+		vchiq_mmal_port_parameter_set(dev->instance,
+					      &ctx->component->output[0],
+					      MMAL_PARAMETER_VIDEO_VALIDATE_TIMESTAMPS,
+					      &enable,
+					      sizeof(enable));
+	}
+
 	setup_mmal_port_format(ctx, &ctx->q_data[V4L2_M2M_SRC],
 			       &ctx->component->input[0]);
 
@@ -2036,11 +2053,10 @@ static int bcm2835_codec_create_component(struct bcm2835_codec_ctx *ctx)
 		/* Enable SPS Timing header so framerate information is encoded
 		 * in the H264 header.
 		 */
-		vchiq_mmal_port_parameter_set(
-					ctx->dev->instance,
-					&ctx->component->output[0],
-					MMAL_PARAMETER_VIDEO_ENCODE_SPS_TIMING,
-					&param, sizeof(param));
+		vchiq_mmal_port_parameter_set(ctx->dev->instance,
+					      &ctx->component->output[0],
+					      MMAL_PARAMETER_VIDEO_ENCODE_SPS_TIMING,
+					      &param, sizeof(param));
 
 		/* Enable inserting headers into the first frame */
 		vchiq_mmal_port_parameter_set(ctx->dev->instance,
@@ -2287,7 +2303,7 @@ static int bcm2835_codec_start_streaming(struct vb2_queue *q,
 	if (count < port->minimum_buffer.num)
 		count = port->minimum_buffer.num;
 
-	if (port->current_buffer.num != count + 1) {
+	if (port->current_buffer.num < count + 1) {
 		v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: ctx:%p, buffer count changed %u to %u\n",
 			 __func__, ctx, port->current_buffer.num, count + 1);
 
@@ -2366,7 +2382,8 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 	while (atomic_read(&port->buffers_with_vpu)) {
 		v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "%s: Waiting for buffers to be returned - %d outstanding\n",
 			 __func__, atomic_read(&port->buffers_with_vpu));
-		ret = wait_for_completion_timeout(&ctx->frame_cmplt, HZ);
+		ret = wait_for_completion_timeout(&ctx->frame_cmplt,
+						  COMPLETE_TIMEOUT);
 		if (ret <= 0) {
 			v4l2_err(&ctx->dev->v4l2_dev, "%s: Timeout waiting for buffers to be returned - %d outstanding\n",
 				 __func__,
@@ -2374,7 +2391,6 @@ static void bcm2835_codec_stop_streaming(struct vb2_queue *q)
 			break;
 		}
 	}
-
 
 	/* If both ports disabled, then disable the component */
 	if (ctx->component_enabled &&
@@ -2832,7 +2848,7 @@ static int bcm2835_codec_create(struct bcm2835_codec_driver *drv,
 		goto unreg_dev;
 	}
 
-	ret = video_register_device(vfd, VFL_TYPE_GRABBER, video_nr);
+	ret = video_register_device(vfd, VFL_TYPE_VIDEO, video_nr);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "Failed to register video device\n");
 		goto unreg_dev;
@@ -2975,7 +2991,7 @@ static struct platform_driver bcm2835_v4l2_codec_driver = {
 module_platform_driver(bcm2835_v4l2_codec_driver);
 
 MODULE_DESCRIPTION("BCM2835 codec V4L2 driver");
-MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.org>");
+MODULE_AUTHOR("Dave Stevenson, <dave.stevenson@raspberrypi.com>");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.0.1");
 MODULE_ALIAS("platform:bcm2835-codec");

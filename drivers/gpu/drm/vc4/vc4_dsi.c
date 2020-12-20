@@ -31,11 +31,13 @@
 #include <linux/pm_runtime.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_bridge.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_simple_kms_helper.h>
 
 #include "vc4_drv.h"
 #include "vc4_regs.h"
@@ -304,11 +306,11 @@
 # define DSI0_PHY_AFEC0_RESET			BIT(11)
 # define DSI1_PHY_AFEC0_PD_BG			BIT(11)
 # define DSI0_PHY_AFEC0_PD			BIT(10)
-# define DSI1_PHY_AFEC0_PD_DLANE3		BIT(10)
+# define DSI1_PHY_AFEC0_PD_DLANE1		BIT(10)
 # define DSI0_PHY_AFEC0_PD_BG			BIT(9)
 # define DSI1_PHY_AFEC0_PD_DLANE2		BIT(9)
 # define DSI0_PHY_AFEC0_PD_DLANE1		BIT(8)
-# define DSI1_PHY_AFEC0_PD_DLANE1		BIT(8)
+# define DSI1_PHY_AFEC0_PD_DLANE3		BIT(8)
 # define DSI_PHY_AFEC0_PTATADJ_MASK		VC4_MASK(7, 4)
 # define DSI_PHY_AFEC0_PTATADJ_SHIFT		4
 # define DSI_PHY_AFEC0_CTATADJ_MASK		VC4_MASK(3, 0)
@@ -498,6 +500,7 @@ struct vc4_dsi {
 	struct mipi_dsi_host dsi_host;
 	struct drm_encoder *encoder;
 	struct drm_bridge *bridge;
+	struct list_head bridge_chain;
 
 	void __iomem *regs;
 
@@ -650,15 +653,6 @@ static const struct debugfs_reg32 dsi1_regs[] = {
 	VC4_REG32(DSI1_ID),
 };
 
-static void vc4_dsi_encoder_destroy(struct drm_encoder *encoder)
-{
-	drm_encoder_cleanup(encoder);
-}
-
-static const struct drm_encoder_funcs vc4_dsi_encoder_funcs = {
-	.destroy = vc4_dsi_encoder_destroy,
-};
-
 static void vc4_dsi_latch_ulps(struct vc4_dsi *dsi, bool latch)
 {
 	u32 afec0 = DSI_PORT_READ(PHY_AFEC0);
@@ -751,10 +745,19 @@ static void vc4_dsi_encoder_disable(struct drm_encoder *encoder)
 	struct vc4_dsi_encoder *vc4_encoder = to_vc4_dsi_encoder(encoder);
 	struct vc4_dsi *dsi = vc4_encoder->dsi;
 	struct device *dev = &dsi->pdev->dev;
+	struct drm_bridge *iter;
 
-	drm_bridge_disable(dsi->bridge);
+	list_for_each_entry_reverse(iter, &dsi->bridge_chain, chain_node) {
+		if (iter->funcs->disable)
+			iter->funcs->disable(iter);
+	}
+
 	vc4_dsi_ulps(dsi, true);
-	drm_bridge_post_disable(dsi->bridge);
+
+	list_for_each_entry_from(iter, &dsi->bridge_chain, chain_node) {
+		if (iter->funcs->post_disable)
+			iter->funcs->post_disable(iter);
+	}
 
 	clk_disable_unprepare(dsi->pll_phy_clock);
 	clk_disable_unprepare(dsi->escape_clock);
@@ -822,6 +825,7 @@ static void vc4_dsi_encoder_enable(struct drm_encoder *encoder)
 	struct vc4_dsi *dsi = vc4_encoder->dsi;
 	struct device *dev = &dsi->pdev->dev;
 	bool debug_dump_regs = false;
+	struct drm_bridge *iter;
 	unsigned long hs_clock;
 	u32 ui_ns;
 	/* Minimum LP state duration in escape clock cycles. */
@@ -1054,7 +1058,10 @@ static void vc4_dsi_encoder_enable(struct drm_encoder *encoder)
 
 	vc4_dsi_ulps(dsi, false);
 
-	drm_bridge_pre_enable(dsi->bridge);
+	list_for_each_entry_reverse(iter, &dsi->bridge_chain, chain_node) {
+		if (iter->funcs->pre_enable)
+			iter->funcs->pre_enable(iter);
+	}
 
 	if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO) {
 		DSI_PORT_WRITE(DISP0_CTRL,
@@ -1071,7 +1078,10 @@ static void vc4_dsi_encoder_enable(struct drm_encoder *encoder)
 			       DSI_DISP0_ENABLE);
 	}
 
-	drm_bridge_enable(dsi->bridge);
+	list_for_each_entry(iter, &dsi->bridge_chain, chain_node) {
+		if (iter->funcs->enable)
+			iter->funcs->enable(iter);
+	}
 
 	if (debug_dump_regs) {
 		struct drm_printer p = drm_info_printer(&dsi->pdev->dev);
@@ -1296,7 +1306,13 @@ static const struct drm_encoder_helper_funcs vc4_dsi_encoder_helper_funcs = {
 };
 
 static const struct of_device_id vc4_dsi_dt_match[] = {
+	{ .compatible = "brcm,bcm2835-dsi0", (void *)(uintptr_t)0 },
 	{ .compatible = "brcm,bcm2835-dsi1", (void *)(uintptr_t)1 },
+	/*
+	 * Use 2 so that it uses the DSI1 register layout, but not DMA
+	 * workaround
+	 */
+	{ .compatible = "brcm,bcm2711-dsi1", (void *)(uintptr_t)2 },
 	{}
 };
 
@@ -1419,10 +1435,10 @@ vc4_dsi_init_phy_clocks(struct vc4_dsi *dsi)
 		memset(&init, 0, sizeof(init));
 		init.parent_names = &parent_name;
 		init.num_parents = 1;
-		if (dsi->port == 1)
-			init.name = phy_clocks[i].dsi1_name;
-		else
+		if (dsi->port == 0)
 			init.name = phy_clocks[i].dsi0_name;
+		else
+			init.name = phy_clocks[i].dsi1_name;
 		init.ops = &clk_fixed_factor_ops;
 
 		ret = devm_clk_hw_register(dev, &fix->hw);
@@ -1459,6 +1475,8 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 				       GFP_KERNEL);
 	if (!vc4_dsi_encoder)
 		return -ENOMEM;
+
+	INIT_LIST_HEAD(&dsi->bridge_chain);
 	vc4_dsi_encoder->base.type = VC4_ENCODER_TYPE_DSI1;
 	vc4_dsi_encoder->dsi = dsi;
 	dsi->encoder = &vc4_dsi_encoder->base.base;
@@ -1482,14 +1500,12 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 		return -ENODEV;
 	}
 
-	/* DSI1 has a broken AXI slave that doesn't respond to writes
-	 * from the ARM.  It does handle writes from the DMA engine,
+	/* DSI1 on BCM2835/6/7 has a broken AXI slave that doesn't respond to
+	 * writes from the ARM.  It does handle writes from the DMA engine,
 	 * so set up a channel for talking to it.
-	 * Where possible managed resource providers are used, but the DMA channel
-	 * must - if acquired - be explicitly released prior to taking an error exit path.
 	 */
 	if (dsi->port == 1) {
-		dsi->reg_dma_mem = dmam_alloc_coherent(dev, 4,
+		dsi->reg_dma_mem = dma_alloc_coherent(dev, 4,
 						      &dsi->reg_dma_paddr,
 						      GFP_KERNEL);
 		if (!dsi->reg_dma_mem) {
@@ -1507,8 +1523,6 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 					  ret);
 			return ret;
 		}
-
-		/* From here on, any error exits must release the dma channel */
 
 		/* Get the physical address of the device's registers.  The
 		 * struct resource for the regs gives us the bus address
@@ -1536,7 +1550,7 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 	if (ret) {
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get interrupt: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	dsi->escape_clock = devm_clk_get(dev, "escape");
@@ -1544,7 +1558,7 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 		ret = PTR_ERR(dsi->escape_clock);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get escape clock: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	dsi->pll_phy_clock = devm_clk_get(dev, "phy");
@@ -1552,7 +1566,7 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 		ret = PTR_ERR(dsi->pll_phy_clock);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get phy clock: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	dsi->pixel_clock = devm_clk_get(dev, "pixel");
@@ -1560,7 +1574,7 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 		ret = PTR_ERR(dsi->pixel_clock);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Failed to get pixel clock: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	ret = drm_of_find_panel_or_bridge(dev->of_node, 0, 0,
@@ -1575,47 +1589,46 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 		if (ret == -ENODEV)
 			return 0;
 
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	if (panel) {
-		dsi->bridge = devm_drm_panel_bridge_add(dev, panel,
-							DRM_MODE_CONNECTOR_DSI);
-		if (IS_ERR(dsi->bridge)){
-			ret = PTR_ERR(dsi->bridge);
-			goto rel_dma_exit;
-		}
+		dsi->bridge = devm_drm_panel_bridge_add_typed(dev, panel,
+							      DRM_MODE_CONNECTOR_DSI);
+		if (IS_ERR(dsi->bridge))
+			return PTR_ERR(dsi->bridge);
 	}
 
 	/* The esc clock rate is supposed to always be 100Mhz. */
 	ret = clk_set_rate(dsi->escape_clock, 100 * 1000000);
 	if (ret) {
 		dev_err(dev, "Failed to set esc clock: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 
 	ret = vc4_dsi_init_phy_clocks(dsi);
 	if (ret)
-		goto rel_dma_exit;
+		return ret;
 
-	if (dsi->port == 1)
+	if (dsi->port == 0)
+		vc4->dsi0 = dsi;
+	else
 		vc4->dsi1 = dsi;
 
-	drm_encoder_init(drm, dsi->encoder, &vc4_dsi_encoder_funcs,
-			 DRM_MODE_ENCODER_DSI, NULL);
+	drm_simple_encoder_init(drm, dsi->encoder, DRM_MODE_ENCODER_DSI);
 	drm_encoder_helper_add(dsi->encoder, &vc4_dsi_encoder_helper_funcs);
 
-	ret = drm_bridge_attach(dsi->encoder, dsi->bridge, NULL);
+	ret = drm_bridge_attach(dsi->encoder, dsi->bridge, NULL, 0);
 	if (ret) {
 		dev_err(dev, "bridge attach failed: %d\n", ret);
-		goto rel_dma_exit;
+		return ret;
 	}
 	/* Disable the atomic helper calls into the bridge.  We
 	 * manually call the bridge pre_enable / enable / etc. calls
 	 * from our driver, since we need to sequence them within the
 	 * encoder's enable/disable paths.
 	 */
-	dsi->encoder->bridge = NULL;
+	list_splice_init(&dsi->encoder->bridge_chain, &dsi->bridge_chain);
 
 	if (dsi->port == 0)
 		vc4_debugfs_add_regset32(drm, "dsi0_regs", &dsi->regset);
@@ -1625,11 +1638,6 @@ static int vc4_dsi_bind(struct device *dev, struct device *master, void *data)
 	pm_runtime_enable(dev);
 
 	return 0;
-
-rel_dma_exit:
-	dma_release_channel(dsi->reg_dma_chan);
-
-	return ret;
 }
 
 static void vc4_dsi_unbind(struct device *dev, struct device *master,
@@ -1642,11 +1650,16 @@ static void vc4_dsi_unbind(struct device *dev, struct device *master,
 	if (dsi->bridge)
 		pm_runtime_disable(dev);
 
-	vc4_dsi_encoder_destroy(dsi->encoder);
+	/*
+	 * Restore the bridge_chain so the bridge detach procedure can happen
+	 * normally.
+	 */
+	list_splice_init(&dsi->bridge_chain, &dsi->encoder->bridge_chain);
+	drm_encoder_cleanup(dsi->encoder);
 
-	dma_release_channel(dsi->reg_dma_chan);
-
-	if (dsi->port == 1)
+	if (dsi->port == 0)
+		vc4->dsi0 = NULL;
+	else
 		vc4->dsi1 = NULL;
 }
 
