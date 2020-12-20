@@ -206,7 +206,7 @@ static const struct ieee80211_regdomain brcmf_regdom = {
 		/* IEEE 802.11a, channel 36..64 */
 //		REG_RULE(5150-10, 5470+10, 160, 6, 20, 0),
 		/* IEEE 802.11a, channel 100..165 */
-		REG_RULE(4670-10, 6110+10, 160, 6, 31, 0), }
+		REG_RULE(4000-10, 6110+10, 160, 6, 31, 0), }
 };
 
 /* Note: brcmf_cipher_suites is an array of int defining which cipher suites
