@@ -162,12 +162,13 @@ static struct ieee80211_channel __wl_2ghz_channels[] = {
 };
 
 static struct ieee80211_channel __wl_5ghz_channels[] = {
-	CHAN5G(32), CHAN5G(34), CHAN5G(36), CHAN5G(38), CHAN5G(40), CHAN5G(42),
+	CHAN5G(16), CHAN5G(17), CHAN5G(18), CHAN5G(19),
+	CHAN5G(20), CHAN5G(32), CHAN5G(34), CHAN5G(36), CHAN5G(38), CHAN5G(40), CHAN5G(42),
 	CHAN5G(44), CHAN5G(46), CHAN5G(48), CHAN5G(52), CHAN5G(56),
 	CHAN5G(60), CHAN5G(64), CHAN5G(100), CHAN5G(104), CHAN5G(108), CHAN5G(106),
 	CHAN5G(112), CHAN5G(116), CHAN5G(120), CHAN5G(124), CHAN5G(128),
 	CHAN5G(132), CHAN5G(136), CHAN5G(140), CHAN5G(144), CHAN5G(149),
-	CHAN5G(153), CHAN5G(157), CHAN5G(161), CHAN5G(165)
+	CHAN5G(153), CHAN5G(157), CHAN5G(161), CHAN5G(165), CHAN5G(221)
 };
 
 /* Band templates duplicated per wiphy. The channel info
@@ -6581,6 +6582,7 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 		for (i = 0; i < band->n_channels; i++)
 		if (brcmfmac_dump_chspec) {
 		    printk(KERN_NOTICE "2ghz flags %d\n", band->channels[i].flags);
+		    band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 	band = wiphy->bands[NL80211_BAND_5GHZ];
@@ -6588,6 +6590,7 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 		for (i = 0; i < band->n_channels; i++)
 		if (brcmfmac_dump_chspec) {
 		    printk(KERN_NOTICE "5ghz flags %d\n", band->channels[i].flags);
+		    band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 
