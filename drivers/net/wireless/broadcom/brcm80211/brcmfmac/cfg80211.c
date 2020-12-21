@@ -162,7 +162,7 @@ static struct ieee80211_channel __wl_2ghz_channels[] = {
 };
 
 static struct ieee80211_channel __wl_5ghz_channels[] = {
-	CHAN5G(16), CHAN5G(17), CHAN5G(18), CHAN5G(19),
+	CHAN5G(9), CHAN5G(16), CHAN5G(17), CHAN5G(18), CHAN5G(19),
 	CHAN5G(20), CHAN5G(21), CHAN5G(22), CHAN5G(23), CHAN5G(24), CHAN5G(25), CHAN5G(26), CHAN5G(27), CHAN5G(28), CHAN5G(29),
 	CHAN5G(30), CHAN5G(31), CHAN5G(32), CHAN5G(33), CHAN5G(34), CHAN5G(35), CHAN5G(36), CHAN5G(37), CHAN5G(38), CHAN5G(39), CHAN5G(40), CHAN5G(41), CHAN5G(42),
 	CHAN5G(43), CHAN5G(44), CHAN5G(45), CHAN5G(46), CHAN5G(47), CHAN5G(48), CHAN5G(49), CHAN5G(50), CHAN5G(51),
@@ -274,7 +274,7 @@ static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 {
 	struct brcmu_chan ch_inf;
 	s32 primary_offset;
-
+    printk(KERN_NOTICE "chandef: control %d center %d width %d\n", ch->chan->center_freq, ch->center_freq1, ch->width);
 	brcmf_dbg(TRACE, "chandef: control %d center %d width %d\n",
 		  ch->chan->center_freq, ch->center_freq1, ch->width);
 	ch_inf.chnum = ieee80211_frequency_to_channel(ch->center_freq1);
