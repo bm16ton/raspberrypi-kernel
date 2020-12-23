@@ -5,8 +5,6 @@
 
 /* Toplevel file. Relies on dhd_linux.c to send commands to the dongle. */
 
-#define NEXMON_MON_IF
-
 #include <linux/kernel.h>
 #include <linux/etherdevice.h>
 #include <linux/module.h>
@@ -15,9 +13,6 @@
 #include <net/cfg80211.h>
 #include <net/netlink.h>
 #include <uapi/linux/if_arp.h>
-#ifdef NEXMON_MON_IF
-#include <linux/if_arp.h>
-#endif
 
 #include <brcmu_utils.h>
 #include <defs.h>
@@ -37,12 +32,6 @@
 #include "vendor.h"
 #include "bus.h"
 #include "common.h"
-
-int brcmfmac_dump_chspec;
-module_param_named(dump_chspec, brcmfmac_dump_chspec, int, 0444);
-MODULE_PARM_DESC(dump_chspec, "dump chspec and flags to syslog");
-
-EXPORT_SYMBOL(brcmfmac_dump_chspec);
 
 #define BRCMF_SCAN_IE_LEN_MAX		2048
 
@@ -97,6 +86,8 @@ EXPORT_SYMBOL(brcmfmac_dump_chspec);
 
 #define BRCMF_ND_INFO_TIMEOUT		msecs_to_jiffies(2000)
 
+#define BRCMF_PS_MAX_TIMEOUT_MS		2000
+
 #define BRCMF_ASSOC_PARAMS_FIXED_SIZE \
 	(sizeof(struct brcmf_assoc_params_le) - sizeof(u16))
 
@@ -143,7 +134,7 @@ static struct ieee80211_rate __wl_rates[] = {
 	.center_freq		= (_freq),			\
 	.hw_value		= (_channel),			\
 	.max_antenna_gain	= 0,				\
-	.max_power		= 31,				\
+	.max_power		= 30,				\
 }
 
 #define CHAN5G(_channel) {					\
@@ -151,7 +142,7 @@ static struct ieee80211_rate __wl_rates[] = {
 	.center_freq		= 5000 + (5 * (_channel)),	\
 	.hw_value		= (_channel),			\
 	.max_antenna_gain	= 0,				\
-	.max_power		= 31,				\
+	.max_power		= 30,				\
 }
 
 static struct ieee80211_channel __wl_2ghz_channels[] = {
@@ -162,24 +153,12 @@ static struct ieee80211_channel __wl_2ghz_channels[] = {
 };
 
 static struct ieee80211_channel __wl_5ghz_channels[] = {
-    CHAN5G(15), CHAN5G(16), CHAN5G(17), CHAN5G(18), CHAN5G(19),
-	CHAN5G(20), CHAN5G(21), CHAN5G(22), CHAN5G(23), CHAN5G(24), CHAN5G(25), CHAN5G(26), CHAN5G(27), CHAN5G(28), CHAN5G(29),
-	CHAN5G(30), CHAN5G(31), CHAN5G(32), CHAN5G(33), CHAN5G(34), CHAN5G(35), CHAN5G(36), CHAN5G(37), CHAN5G(38), CHAN5G(39), CHAN5G(40), CHAN5G(41), CHAN5G(42),
-	CHAN5G(43), CHAN5G(44), CHAN5G(45), CHAN5G(46), CHAN5G(47), CHAN5G(48), CHAN5G(49), CHAN5G(50), CHAN5G(51),
-	CHAN5G(52), CHAN5G(53), CHAN5G(54), CHAN5G(55), CHAN5G(56), CHAN5G(57), CHAN5G(58), CHAN5G(59),
-	CHAN5G(60), CHAN5G(61), CHAN5G(62), CHAN5G(63), CHAN5G(64), /*CHAN5G(94), CHAN5G(95), CHAN5G(96), CHAN5G(97), CHAN5G(98),*/ CHAN5G(99),
-	CHAN5G(100), CHAN5G(101), CHAN5G(102), CHAN5G(103), CHAN5G(104), CHAN5G(105), CHAN5G(106), CHAN5G(107), CHAN5G(108), CHAN5G(109),
-	CHAN5G(110), CHAN5G(111),
-	CHAN5G(112), CHAN5G(113), CHAN5G(114), CHAN5G(115), CHAN5G(116), CHAN5G(117), CHAN5G(118), CHAN5G(119), CHAN5G(120), CHAN5G(121),
-	CHAN5G(122), CHAN5G(123), CHAN5G(124), CHAN5G(125), CHAN5G(126), CHAN5G(127), CHAN5G(128), CHAN5G(129), CHAN5G(130),
-	CHAN5G(131), CHAN5G(132), CHAN5G(133), CHAN5G(134), CHAN5G(135), CHAN5G(136), CHAN5G(137), CHAN5G(138), CHAN5G(139),
-	CHAN5G(140), CHAN5G(141), CHAN5G(142), CHAN5G(143), CHAN5G(144), CHAN5G(145), CHAN5G(146), CHAN5G(147), CHAN5G(148), CHAN5G(149),
-	CHAN5G(150), CHAN5G(151), CHAN5G(152), CHAN5G(153), CHAN5G(154), CHAN5G(155), CHAN5G(156), CHAN5G(157), CHAN5G(158), CHAN5G(159), CHAN5G(160), CHAN5G(161),
-	CHAN5G(162), CHAN5G(163), CHAN5G(164), CHAN5G(165), CHAN5G(166), CHAN5G(167), CHAN5G(168), CHAN5G(169), CHAN5G(170), CHAN5G(171), CHAN5G(172),
-	CHAN5G(173), CHAN5G(174), CHAN5G(175), CHAN5G(176), CHAN5G(177), CHAN5G(178), CHAN5G(179) // CHAN5G(180), CHAN5G(181), CHAN5G(182), CHAN5G(183), CHAN5G(184),
-//	CHAN5G(185), CHAN5G(186), CHAN5G(187), CHAN5G(188), CHAN5G(189), CHAN5G(190), CHAN5G(191), CHAN5G(192), CHAN5G(193), CHAN5G(194), CHAN5G(195), CHAN5G(196),
-//	CHAN5G(197), CHAN5G(198), CHAN5G(199), CHAN5G(200), CHAN5G(201), CHAN5G(202), CHAN5G(203), CHAN5G(204), CHAN5G(205), CHAN5G(206), CHAN5G(207), CHAN5G(208),
-//	CHAN5G(209), CHAN5G(210), CHAN5G(211), CHAN5G(212), CHAN5G(213), CHAN5G(214), CHAN5G(215), CHAN5G(216)
+	CHAN5G(34), CHAN5G(36), CHAN5G(38), CHAN5G(40), CHAN5G(42),
+	CHAN5G(44), CHAN5G(46), CHAN5G(48), CHAN5G(52), CHAN5G(56),
+	CHAN5G(60), CHAN5G(64), CHAN5G(100), CHAN5G(104), CHAN5G(108),
+	CHAN5G(112), CHAN5G(116), CHAN5G(120), CHAN5G(124), CHAN5G(128),
+	CHAN5G(132), CHAN5G(136), CHAN5G(140), CHAN5G(144), CHAN5G(149),
+	CHAN5G(153), CHAN5G(157), CHAN5G(161), CHAN5G(165)
 };
 
 /* Band templates duplicated per wiphy. The channel info
@@ -209,16 +188,16 @@ static const struct ieee80211_regdomain brcmf_regdom = {
 	.alpha2 =  "99",
 	.reg_rules = {
 		/* IEEE 802.11b/g, channels 1..11 */
-		REG_RULE(2412-10, 2484+10, 40, 6, 31, 0),
+		REG_RULE(2412-10, 2472+10, 40, 6, 20, 0),
 		/* If any */
 		/* IEEE 802.11 channel 14 - Only JP enables
 		 * this and for 802.11b only
 		 */
-//		REG_RULE(2484-10, 2484+10, 20, 6, 20, 0),
+		REG_RULE(2484-10, 2484+10, 20, 6, 20, 0),
 		/* IEEE 802.11a, channel 36..64 */
-//		REG_RULE(5150-10, 5470+10, 160, 6, 20, 0),
+		REG_RULE(5150-10, 5350+10, 160, 6, 20, 0),
 		/* IEEE 802.11a, channel 100..165 */
-		REG_RULE(4000-10, 6110+10, 160, 6, 31, 0), }
+		REG_RULE(5470-10, 5850+10, 160, 6, 20, 0), }
 };
 
 /* Note: brcmf_cipher_suites is an array of int defining which cipher suites
@@ -274,7 +253,7 @@ static u16 chandef_to_chanspec(struct brcmu_d11inf *d11inf,
 {
 	struct brcmu_chan ch_inf;
 	s32 primary_offset;
-    printk(KERN_NOTICE "chandef: control %d center %d width %d\n", ch->chan->center_freq, ch->center_freq1, ch->width);
+
 	brcmf_dbg(TRACE, "chandef: control %d center %d width %d\n",
 		  ch->chan->center_freq, ch->center_freq1, ch->width);
 	ch_inf.chnum = ieee80211_frequency_to_channel(ch->center_freq1);
@@ -472,20 +451,6 @@ static int brcmf_vif_add_validate(struct brcmf_cfg80211_info *cfg,
 		params.iftype_num[pos->wdev.iftype]++;
 
 	params.iftype_num[new_type]++;
-
-#ifdef NEXMON_MON_IF
-	//Return not supported if hostapd tries to add a second monitor interface
-	if (new_type == NL80211_IFTYPE_MONITOR)
-	{
-		brcmf_err("Attempt to add a MONITOR interface...\n");
-		if (params.iftype_num[new_type] > 1)
-		{
-			brcmf_err("... there is already a monitor interface, returning EOPNOTSUPP\n");
-			return -EOPNOTSUPP;
-		}
-	}
-#endif
-
 	return cfg80211_check_combinations(cfg->wiphy, &params);
 }
 
@@ -580,97 +545,6 @@ static int brcmf_cfg80211_request_ap_if(struct brcmf_if *ifp)
 	return err;
 }
 
-#ifdef NEXMON_MON_IF
-
-/**
- * brcmf_mon_add_vif() - create a new MONITOR virtual interface
- *
- * @wiphy: wiphy device of new interface.
- * @name: name of the new interface.
- * @params: contains mac address for MONITOR device.
- */
-//static
-struct wireless_dev *brcmf_mon_add_vif(struct wiphy *wiphy, const char *name,
-				      struct vif_params *params)
-{
-	struct brcmf_cfg80211_info *cfg = wiphy_to_cfg(wiphy);
-	struct brcmf_if *ifp = netdev_priv(cfg_to_ndev(cfg));
-	struct brcmf_cfg80211_vif *vif;
-	int err;
-
-	brcmf_err("brcmf_mon_add_vif called\n");
-
-	if (brcmf_cfg80211_vif_event_armed(cfg))
-		return ERR_PTR(-EBUSY);
-
-	brcmf_err("Adding vif \"%s\"\n", name);
-
-	vif = brcmf_alloc_vif(cfg, NL80211_IFTYPE_MONITOR);
-	if (IS_ERR(vif))
-		return (struct wireless_dev *)vif;
-
-	brcmf_cfg80211_arm_vif_event(cfg, vif);
-
-	err = brcmf_cfg80211_request_ap_if(ifp); // ????? analyze
-	if (err) {
-		brcmf_cfg80211_arm_vif_event(cfg, NULL);
-		goto fail;
-	}
-
-	/* wait for firmware event */
-	err = brcmf_cfg80211_wait_vif_event(cfg, BRCMF_E_IF_ADD,
-					    BRCMF_VIF_EVENT_TIMEOUT);
-	brcmf_cfg80211_arm_vif_event(cfg, NULL);
-	if (!err) {
-		brcmf_err("timeout occurred\n");
-		err = -EIO;
-		goto fail;
-	}
-
-	/* interface created in firmware */
-	ifp = vif->ifp;
-	if (!ifp) {
-		brcmf_err("no if pointer provided\n");
-		err = -ENOENT;
-		goto fail;
-	}
-
-	strncpy(ifp->ndev->name, name, sizeof(ifp->ndev->name) - 1);
-	err = brcmf_net_attach(ifp, true);
-	if (err) {
-		brcmf_err("Registering netdevice failed\n");
-		goto fail;
-	}
-
-
-	//Try to change the ndev to be flagged with "monitor mode"  before going on
-	ifp->ndev->type = ARPHRD_IEEE80211_RADIOTAP;
-	ifp->ndev->ieee80211_ptr->iftype = NL80211_IFTYPE_MONITOR;
-
-	return &ifp->vif->wdev;
-
- fail:
-	brcmf_free_vif(vif);
-	return ERR_PTR(err);
-}
-
-static s32
-brcmf_cfg80211_nexmon_set_channel(struct wiphy *wiphy,struct cfg80211_chan_def *chandef) {
-	struct brcmf_cfg80211_info *cfg = wiphy_to_cfg(wiphy);
-	struct brcmf_if *ifp = netdev_priv(cfg_to_ndev(cfg));
-	s32 err = 0;
-	u16 chanspec;
-
-	//brcmf_err("DEBUG NexMon: brcmf_cfg80211_nexmon_set_channel() called!\n");
-	chanspec = chandef_to_chanspec(&cfg->d11inf, chandef);
-	err = brcmf_fil_iovar_int_set(ifp, "chanspec", chanspec);
-	if (err < 0) {
-		brcmf_err("Set Channel failed: chspec=%d, %d\n", chanspec, err);
-	}
-	return 0;
-}
-#endif
-
 /**
  * brcmf_ap_add_vif() - create a new AP virtual interface for multiple BSS
  *
@@ -756,7 +630,7 @@ static bool brcmf_is_ibssmode(struct brcmf_cfg80211_vif *vif)
  *
  * @wiphy: wiphy device of new interface.
  * @name: name of the new interface.
-
+ */
 static struct wireless_dev *brcmf_mon_add_vif(struct wiphy *wiphy,
 					      const char *name)
 {
@@ -826,7 +700,7 @@ static int brcmf_mon_del_vif(struct wiphy *wiphy, struct wireless_dev *wdev)
 
 	return 0;
 }
- */
+
 static struct wireless_dev *brcmf_cfg80211_add_iface(struct wiphy *wiphy,
 						     const char *name,
 						     unsigned char name_assign_type,
@@ -849,16 +723,10 @@ static struct wireless_dev *brcmf_cfg80211_add_iface(struct wiphy *wiphy,
 	case NL80211_IFTYPE_STATION:
 	case NL80211_IFTYPE_AP_VLAN:
 	case NL80211_IFTYPE_WDS:
-#ifndef NEXMON_MON_IF
- 	case NL80211_IFTYPE_MONITOR:
-#endif
 	case NL80211_IFTYPE_MESH_POINT:
 		return ERR_PTR(-EOPNOTSUPP);
-#ifdef NEXMON_MON_IF
 	case NL80211_IFTYPE_MONITOR:
-		wdev = brcmf_mon_add_vif(wiphy, name, params);
-		break;
-#endif
+		return brcmf_mon_add_vif(wiphy, name);
 	case NL80211_IFTYPE_AP:
 		wdev = brcmf_ap_add_vif(wiphy, name, params);
 		break;
@@ -1043,9 +911,8 @@ int brcmf_cfg80211_del_iface(struct wiphy *wiphy, struct wireless_dev *wdev)
 	case NL80211_IFTYPE_WDS:
 	case NL80211_IFTYPE_MESH_POINT:
 		return -EOPNOTSUPP;
-#ifdef NEXMON_MON_IF
 	case NL80211_IFTYPE_MONITOR:
-#endif
+		return brcmf_mon_del_vif(wiphy, wdev);
 	case NL80211_IFTYPE_AP:
 		return brcmf_cfg80211_del_ap_iface(wiphy, wdev);
 	case NL80211_IFTYPE_P2P_CLIENT:
@@ -1112,10 +979,6 @@ brcmf_cfg80211_change_iface(struct wiphy *wiphy, struct net_device *ndev,
 	}
 	switch (type) {
 	case NL80211_IFTYPE_MONITOR:
-#ifdef NEXMON_MON_IF
-		infra = 1;
-		break;
-#endif
 	case NL80211_IFTYPE_WDS:
 		bphy_err(drvr, "type (%d) : currently we do not support this type\n",
 			 type);
@@ -1187,9 +1050,7 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 
 	n_ssids = request->n_ssids;
 	n_channels = request->n_channels;
-	if (brcmfmac_dump_chspec) {
-        printk(KERN_NOTICE "channels to scan (%d)\n", n_channels);
-    }
+
 	/* Copy channel array if applicable */
 	brcmf_dbg(SCAN, "### List of channelspecs to scan ### %d\n",
 		  n_channels);
@@ -1199,9 +1060,6 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 						       request->channels[i]);
 			brcmf_dbg(SCAN, "Chan : %d, Channel spec: %x\n",
 				  request->channels[i]->hw_value, chanspec);
-	        if (brcmfmac_dump_chspec) {
-		        printk(KERN_NOTICE "%d channels to chanspec %x\n", request->channels[i]->hw_value, chanspec);
-			}
 			params_le->channel_list[i] = cpu_to_le16(chanspec);
 		}
 	} else {
@@ -3089,7 +2947,11 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 			bphy_err(drvr, "error (%d)\n", err);
 	}
 
-    brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret", 2000); /* 2000ms - the maximum */
+	timeout = 2000; /* 2000ms - the maximum */
+	err = brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret",
+				min_t(u32, timeout, BRCMF_PS_MAX_TIMEOUT_MS));
+	if (err)
+		bphy_err(drvr, "Unable to set pm timeout, (%d)\n", err);
 
 done:
 	brcmf_dbg(TRACE, "Exit\n");
@@ -5649,9 +5511,6 @@ static struct cfg80211_ops brcmf_cfg80211_ops = {
 	.crit_proto_start = brcmf_cfg80211_crit_proto_start,
 	.crit_proto_stop = brcmf_cfg80211_crit_proto_stop,
 	.tdls_oper = brcmf_cfg80211_tdls_oper,
-#ifdef NEXMON_MON_IF
-	.set_monitor_channel = brcmf_cfg80211_nexmon_set_channel,
-#endif
 	.update_connect_params = brcmf_cfg80211_update_conn_params,
 	.set_pmk = brcmf_cfg80211_set_pmk,
 	.del_pmk = brcmf_cfg80211_del_pmk,
@@ -6580,9 +6439,6 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 
 	err = brcmf_fil_iovar_data_get(ifp, "chanspecs", pbuf,
 				       BRCMF_DCMD_MEDLEN);
-	if (brcmfmac_dump_chspec) {
-        printk(KERN_NOTICE "chanspecs (%d)\n", err);
-    }
 	if (err) {
 		bphy_err(drvr, "get chanspecs error (%d)\n", err);
 		goto fail_pbuf;
@@ -6591,26 +6447,17 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 	band = wiphy->bands[NL80211_BAND_2GHZ];
 	if (band)
 		for (i = 0; i < band->n_channels; i++)
-		if (brcmfmac_dump_chspec) {
-		    printk(KERN_NOTICE "2ghz flags %d\n", band->channels[i].flags);
-		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 	band = wiphy->bands[NL80211_BAND_5GHZ];
 	if (band)
 		for (i = 0; i < band->n_channels; i++)
-		if (brcmfmac_dump_chspec) {
-		    printk(KERN_NOTICE "5ghz flags %d\n", band->channels[i].flags);
-		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
-
 
 	total = le32_to_cpu(list->count);
 	for (i = 0; i < total; i++) {
 		ch.chspec = (u16)le32_to_cpu(list->element[i]);
 		cfg->d11inf.decchspec(&ch);
-		if (brcmfmac_dump_chspec) {
-            printk(KERN_NOTICE "chspec 0x%x\n", ch.chspec);
-        }
+
 		if (ch.band == BRCMU_CHAN_BAND_2G) {
 			band = wiphy->bands[NL80211_BAND_2GHZ];
 		} else if (ch.band == BRCMU_CHAN_BAND_5G) {
@@ -6987,12 +6834,6 @@ brcmf_txrx_stypes[NUM_NL80211_IFTYPES] = {
 		      BIT(IEEE80211_STYPE_AUTH >> 4) |
 		      BIT(IEEE80211_STYPE_DEAUTH >> 4) |
 		      BIT(IEEE80211_STYPE_ACTION >> 4)
-#ifdef NEXMON_MON_IF
-	},
-	[NL80211_IFTYPE_MONITOR] = {
-		.tx = 0xffff,
-		.rx = 0xffff
-#endif
 	}
 };
 
@@ -7055,12 +6896,7 @@ static int brcmf_setup_ifmodes(struct wiphy *wiphy, struct brcmf_if *ifp)
 
 	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
 				 BIT(NL80211_IFTYPE_ADHOC) |
-#ifdef NEXMON_MON_IF
-				 BIT(NL80211_IFTYPE_AP) |
-				 BIT(NL80211_IFTYPE_MONITOR);
-#else
 				 BIT(NL80211_IFTYPE_AP);
-#endif
 	if (mon_flag)
 		wiphy->interface_modes |= BIT(NL80211_IFTYPE_MONITOR);
 	if (p2p)
@@ -7078,10 +6914,6 @@ static int brcmf_setup_ifmodes(struct wiphy *wiphy, struct brcmf_if *ifp)
 	combo[c].num_different_channels = 1 + (rsdb || (p2p && mchan));
 	c0_limits[i].max = 1;
 	c0_limits[i++].types = BIT(NL80211_IFTYPE_STATION);
-#ifdef NEXMON_MON_IF
-    	c0_limits[i].max = 1;
-    	c0_limits[i++].types = BIT(NL80211_IFTYPE_MONITOR);
-#endif
 	if (mon_flag) {
 		c0_limits[i].max = 1;
 		c0_limits[i++].types = BIT(NL80211_IFTYPE_MONITOR);
@@ -7121,10 +6953,6 @@ static int brcmf_setup_ifmodes(struct wiphy *wiphy, struct brcmf_if *ifp)
 		p2p_limits[i++].types = BIT(NL80211_IFTYPE_STATION);
 		p2p_limits[i].max = 1;
 		p2p_limits[i++].types = BIT(NL80211_IFTYPE_AP);
-#ifdef NEXMON_MON_IF
-		p2p_limits[i].max = 1;
-		p2p_limits[i++].types = BIT(NL80211_IFTYPE_MONITOR);
-#endif
 		p2p_limits[i].max = 1;
 		p2p_limits[i++].types = BIT(NL80211_IFTYPE_P2P_CLIENT);
 		p2p_limits[i].max = 1;
@@ -7439,24 +7267,6 @@ s32 brcmf_cfg80211_up(struct net_device *ndev)
 	err = __brcmf_cfg80211_up(ifp);
 	mutex_unlock(&cfg->usr_sync);
 
-#ifdef NEXMON_MON_IF
-	// Enable monitor mode
-	if (ifp->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_MONITOR) {
-		unsigned int monitormode;
-		switch (ifp->ndev->type) {
-			case ARPHRD_IEEE80211_RADIOTAP:
-				monitormode = 2; // RADIOTAP ENABLED MONITOR MODE
-				break;
-			case ARPHRD_IEEE80211:
-				monitormode = 1; // MONITOR MODE WITHOUT RADIOTAP
-				break;
-			default:
-				monitormode = 0;
-		}
-		brcmf_fil_cmd_data_set(ifp, 108, &monitormode, 4);
-	}
-#endif
-
 	return err;
 }
 
@@ -7469,14 +7279,6 @@ s32 brcmf_cfg80211_down(struct net_device *ndev)
 	mutex_lock(&cfg->usr_sync);
 	err = __brcmf_cfg80211_down(ifp);
 	mutex_unlock(&cfg->usr_sync);
-
-#ifdef NEXMON_MON_IF
-	// Disable monitor mode
-	if (ifp->ndev->ieee80211_ptr->iftype == NL80211_IFTYPE_MONITOR) {
-		unsigned int monitormode = 0; // DISABLE MONITOR MODE
-		brcmf_fil_cmd_data_set(ifp, 108, &monitormode, 4);
-	}
-#endif
 
 	return err;
 }
