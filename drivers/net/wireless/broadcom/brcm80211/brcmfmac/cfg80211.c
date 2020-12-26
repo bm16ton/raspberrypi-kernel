@@ -44,6 +44,13 @@ MODULE_PARM_DESC(dump_chspec, "dump chspec and flags to syslog");
 
 EXPORT_SYMBOL(brcmfmac_dump_chspec);
 
+int brcmfmac_enable_pm;
+module_param_named(enable_pm, brcmfmac_enable_pm, int, 0444);
+MODULE_PARM_DESC(enable_pm, "enable power saving");
+
+EXPORT_SYMBOL(brcmfmac_enable_pm);
+
+
 #define BRCMF_SCAN_IE_LEN_MAX		2048
 
 #define WPA_OUI				"\x00\x50\xF2"	/* WPA OUI */
@@ -3051,11 +3058,14 @@ static s32
 brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 			   bool enabled, s32 timeout)
 {
-	s32 pm;
+    s32 pm = 32;
+    s32 pm2 = 32;
+    s32 pm3 = 32;
 	s32 err = 0;
 	struct brcmf_cfg80211_info *cfg = wiphy_to_cfg(wiphy);
 	struct brcmf_if *ifp = netdev_priv(ndev);
 	struct brcmf_pub *drvr = cfg->pub;
+
 
 	brcmf_dbg(TRACE, "Enter\n");
 
@@ -3066,9 +3076,14 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 	 * preference in cfg struct to apply this to
 	 * FW later while initializing the dongle
 	 */
+	if (brcmfmac_enable_pm) {
 	cfg->pwr_save = enabled;
-	if (!check_vif_up(ifp->vif)) {
+	} else {
+	enabled = false;
+	cfg->pwr_save = enabled;
+	}
 
+	if (!check_vif_up(ifp->vif)) {
 		brcmf_dbg(INFO, "Device is not ready, storing the value in cfg_info struct\n");
 		goto done;
 	}
@@ -3079,9 +3094,27 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 		brcmf_dbg(INFO, "Do not enable power save for P2P clients\n");
 		pm = PM_OFF;
 	}
-	brcmf_info("power save %s\n", (pm ? "enabled" : "disabled"));
+
+	if (!brcmfmac_enable_pm) {
+	    pm = PM_OFF;
+	}
+
+//	brcmf_info("power save %s\n", (pm ? "enabled" : "disabled"));
 
 	err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PM, pm);
+	pm2 = ndev->ieee80211_ptr->ps ? true : false;
+    if (brcmfmac_enable_pm) {
+        pm2 = cfg->pwr_save ? true : false;
+	    bphy_err(drvr, "BRCMFMAC power_save change ,wifi power_save status %s\n", (pm2 ? "enabled" : "disabled"));
+	    brcmf_fil_cmd_int_get(ifp, BRCMF_C_GET_PM, &pm3);
+	    bphy_err(drvr, "BRCMFMAC power_save firmware status %s state %d\n", (pm3 ? "enabled" : "disabled"), pm3);
+	} else {
+        pm2 = ndev->ieee80211_ptr->ps ? true : false;
+	    bphy_err(drvr, "BRCMFMAC power_save change blocked, use mod param to enable,wifi power_save status %s\n", (pm2 ? "enabled" : "disabled"));
+	    brcmf_fil_cmd_int_get(ifp, BRCMF_C_GET_PM, &pm3);
+	    bphy_err(drvr, "BRCMFMAC power_save firmware status %s state %d\n", (pm3 ? "enabled" : "disabled"), pm3);
+	}
+//	bphy_err(drvr, "power ieee80211_ptr %d\n", ndev->ieee80211_ptr->ps);
 	if (err) {
 		if (err == -ENODEV)
 			bphy_err(drvr, "net_device is not ready yet\n");
@@ -3089,11 +3122,15 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
 			bphy_err(drvr, "error (%d)\n", err);
 	}
 
-    brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret", 2000); /* 2000ms - the maximum */
+	brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret", 2000); /* 2000ms - the maximum */
 
 done:
 	brcmf_dbg(TRACE, "Exit\n");
+	if (brcmfmac_enable_pm) {
 	return err;
+	} else {
+	return 1;
+	}
 }
 
 static s32 brcmf_inform_single_bss(struct brcmf_cfg80211_info *cfg,
@@ -6426,7 +6463,11 @@ static s32 wl_init_priv(struct brcmf_cfg80211_info *cfg)
 	s32 err = 0;
 
 	cfg->scan_request = NULL;
-	cfg->pwr_save = true;
+	if (brcmfmac_enable_pm) {
+	    cfg->pwr_save = true;
+	} else {
+	    cfg->pwr_save = false;
+	}
 	cfg->dongle_up = false;		/* dongle is not up yet */
 	err = brcmf_init_priv_mem(cfg);
 	if (err)
@@ -6591,16 +6632,16 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 	band = wiphy->bands[NL80211_BAND_2GHZ];
 	if (band)
 		for (i = 0; i < band->n_channels; i++)
-		if (brcmfmac_dump_chspec) {
-		    printk(KERN_NOTICE "2ghz flags %d\n", band->channels[i].flags);
-		}
+//		if (brcmfmac_dump_chspec) {
+//		    printk(KERN_NOTICE "2ghz flags %d\n", band->channels[i].flags);
+//		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 	band = wiphy->bands[NL80211_BAND_5GHZ];
 	if (band)
 		for (i = 0; i < band->n_channels; i++)
-		if (brcmfmac_dump_chspec) {
-		    printk(KERN_NOTICE "5ghz flags %d\n", band->channels[i].flags);
-		}
+//		if (brcmfmac_dump_chspec) {
+//		    printk(KERN_NOTICE "5ghz flags %d\n", band->channels[i].flags);
+//		}
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
 
 
@@ -6609,7 +6650,7 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 		ch.chspec = (u16)le32_to_cpu(list->element[i]);
 		cfg->d11inf.decchspec(&ch);
 		if (brcmfmac_dump_chspec) {
-            printk(KERN_NOTICE "chspec 0x%x\n", ch.chspec);
+            printk(KERN_NOTICE "BRCMFMAC chspec 0x%x\n", ch.chspec);
         }
 		if (ch.band == BRCMU_CHAN_BAND_2G) {
 			band = wiphy->bands[NL80211_BAND_2GHZ];
@@ -7256,10 +7297,14 @@ static int brcmf_setup_wiphy(struct wiphy *wiphy, struct brcmf_if *ifp)
 				    BIT(NL80211_BSS_SELECT_ATTR_RSSI_ADJUST);
 
 	wiphy->flags |= WIPHY_FLAG_NETNS_OK |
-			WIPHY_FLAG_PS_ON_BY_DEFAULT |
 			WIPHY_FLAG_HAVE_AP_SME |
 			WIPHY_FLAG_OFFCHAN_TX |
 			WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL;
+	if (brcmfmac_enable_pm) {
+		wiphy->flags |= WIPHY_FLAG_PS_ON_BY_DEFAULT;
+	} else {
+	    wiphy->flags &= ~WIPHY_FLAG_PS_ON_BY_DEFAULT;
+	}
 	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_TDLS))
 		wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS;
 	if (!ifp->drvr->settings->roamoff)
@@ -7372,7 +7417,7 @@ static s32 brcmf_config_dongle(struct brcmf_cfg80211_info *cfg)
 	err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PM, power_mode);
 	if (err)
 		goto default_conf_out;
-	brcmf_dbg(INFO, "power save set to %s\n",
+	printk("BRCMFMAC power save set to %s\n",
 		  (power_mode ? "enabled" : "disabled"));
 
 	err = brcmf_dongle_roam(ifp);
