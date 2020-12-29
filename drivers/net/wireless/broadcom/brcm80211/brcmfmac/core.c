@@ -1282,8 +1282,6 @@ static const struct file_operations bus_reset_fops = {
 	.write	= bus_reset_write,
 };
 
-void brcmf_sdio_debugfs_create(void *bus);
-
 static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 {
 	int ret = -1;
@@ -1358,6 +1356,10 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 	INIT_WORK(&drvr->bus_reset, brcmf_core_bus_reset);
 
 	/* populate debugfs */
+
+	drvr->wiphy->debugfsdir = debugfs_create_dir("brcmfmac",
+			   drvr->wiphy->debugfsdir);
+
 	brcmf_debugfs_add_entry(drvr, "revinfo", brcmf_revinfo_read);
 	debugfs_create_file("reset", 0600, brcmf_debugfs_get_devdir(drvr), drvr,
 			    &bus_reset_fops);
