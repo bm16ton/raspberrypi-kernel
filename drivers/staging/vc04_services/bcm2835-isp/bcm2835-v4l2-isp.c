@@ -1146,11 +1146,11 @@ static const struct v4l2_ioctl_ops bcm2835_isp_node_ioctl_ops = {
  * Size of the array to provide to the VPU when asking for the list of supported
  * formats.
  *
- * The ISP component currently advertises 44 input formats, so add a small
+ * The ISP component currently advertises 62 input formats, so add a small
  * overhead on that. Should the component advertise more formats then the excess
  * will be dropped and a warning logged.
  */
-#define MAX_SUPPORTED_ENCODINGS 50
+#define MAX_SUPPORTED_ENCODINGS 70
 
 /* Populate node->supported_fmts with the formats supported by those ports. */
 static int bcm2835_isp_get_supported_fmts(struct bcm2835_isp_node *node)
@@ -1169,8 +1169,9 @@ static int bcm2835_isp_get_supported_fmts(struct bcm2835_isp_node *node)
 	if (ret) {
 		if (ret == MMAL_MSG_STATUS_ENOSPC) {
 			v4l2_err(&dev->v4l2_dev,
-				 "%s: port has more encoding than we provided space for. Some are dropped.\n",
-				 __func__);
+				 "%s: port has more encodings than we provided space for. Some are dropped (%u vs %u).\n",
+				 __func__, param_size / sizeof(u32),
+				 MAX_SUPPORTED_ENCODINGS);
 			num_encodings = MAX_SUPPORTED_ENCODINGS;
 		} else {
 			v4l2_err(&dev->v4l2_dev, "%s: get_param ret %u.\n",

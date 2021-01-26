@@ -16,10 +16,11 @@
 #define AD7949_MASK_TOTAL		GENMASK(13, 0)
 #define AD7949_OFFSET_CHANNEL_SEL	7
 #define AD7949_CFG_READ_BACK		0x1
-#define AD7949_CFG_REG_SIZE_BITS	14
+#define AD7949_CFG_REG_SIZE_BITS	5
 
 enum {
 	ID_AD7949 = 0,
+	ID_AD7890,
 	ID_AD7682,
 	ID_AD7689,
 };
@@ -31,6 +32,7 @@ struct ad7949_adc_spec {
 
 static const struct ad7949_adc_spec ad7949_adc_spec[] = {
 	[ID_AD7949] = { .num_channels = 8, .resolution = 14 },
+	[ID_AD7890] = { .num_channels = 8, .resolution = 12 },
 	[ID_AD7682] = { .num_channels = 4, .resolution = 16 },
 	[ID_AD7689] = { .num_channels = 8, .resolution = 16 },
 };
@@ -88,6 +90,7 @@ static int ad7949_spi_write_cfg(struct ad7949_adc_chip *ad7949_adc, u16 val,
 static int ad7949_spi_read_channel(struct ad7949_adc_chip *ad7949_adc, int *val,
 				   unsigned int channel)
 {
+	unsigned int result, tmp;
 	int ret;
 	int i;
 	int bits_per_word = ad7949_adc->resolution;
@@ -119,6 +122,12 @@ static int ad7949_spi_read_channel(struct ad7949_adc_chip *ad7949_adc, int *val,
 
 	/* 3: write something and read actual data */
 	ad7949_adc->buffer = 0;
+    tmp = channel;
+    tmp <<= 13;
+    tmp |= (1<<12);   /*  set CONVST bit   */ 
+   
+    result = spi_write(ad7949_adc->spi, tmp, 1);
+
 	spi_message_init_with_transfers(&msg, tx, 1);
 	ret = spi_sync(ad7949_adc->spi, &msg);
 	if (ret)
@@ -306,6 +315,7 @@ static int ad7949_spi_remove(struct spi_device *spi)
 
 static const struct of_device_id ad7949_spi_of_id[] = {
 	{ .compatible = "adi,ad7949" },
+	{ .compatible = "adi,ad7890" },
 	{ .compatible = "adi,ad7682" },
 	{ .compatible = "adi,ad7689" },
 	{ }
@@ -314,6 +324,7 @@ MODULE_DEVICE_TABLE(of, ad7949_spi_of_id);
 
 static const struct spi_device_id ad7949_spi_id[] = {
 	{ "ad7949", ID_AD7949  },
+	{ "ad7890", ID_AD7890  },
 	{ "ad7682", ID_AD7682 },
 	{ "ad7689", ID_AD7689 },
 	{ }

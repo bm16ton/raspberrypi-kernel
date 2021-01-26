@@ -381,6 +381,106 @@ static const struct bcm2835_codec_fmt supported_formats[] = {
 		.size_multiplier_x2	= 2,
 		.is_bayer		= true,
 	}, {
+		/* Bayer formats unpacked to 16bpp */
+		/* 10 bit */
+		.fourcc			= V4L2_PIX_FMT_SRGGB10,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SRGGB10,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SBGGR10,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SBGGR10,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGRBG10,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGRBG10,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGBRG10,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGBRG10,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		/* 12 bit */
+		.fourcc			= V4L2_PIX_FMT_SRGGB12,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SRGGB12,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SBGGR12,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SBGGR12,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGRBG12,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGRBG12,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGBRG12,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGBRG12,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		/* 14 bit */
+		.fourcc			= V4L2_PIX_FMT_SRGGB14,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SRGGB14,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SBGGR14,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SBGGR14,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGRBG14,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGRBG14,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
+		.fourcc			= V4L2_PIX_FMT_SGBRG14,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_BAYER_SGBRG14,
+		.size_multiplier_x2	= 2,
+		.is_bayer		= true,
+	}, {
 		/* Monochrome MIPI formats */
 		/* 8 bit */
 		.fourcc			= V4L2_PIX_FMT_GREY,
@@ -420,6 +520,30 @@ static const struct bcm2835_codec_fmt supported_formats[] = {
 		.bytesperline_align	= 32,
 		.flags			= 0,
 		.mmal_fmt		= MMAL_ENCODING_Y16,
+		.size_multiplier_x2	= 2,
+	}, {
+		/* 10 bit as 16bpp */
+		.fourcc			= V4L2_PIX_FMT_Y10,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_Y10,
+		.size_multiplier_x2	= 2,
+	}, {
+		/* 12 bit as 16bpp */
+		.fourcc			= V4L2_PIX_FMT_Y12,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_Y12,
+		.size_multiplier_x2	= 2,
+	}, {
+		/* 14 bit as 16bpp */
+		.fourcc			= V4L2_PIX_FMT_Y14,
+		.depth			= 16,
+		.bytesperline_align	= 32,
+		.flags			= 0,
+		.mmal_fmt		= MMAL_ENCODING_Y14,
 		.size_multiplier_x2	= 2,
 	}, {
 		/* Compressed formats */
@@ -908,7 +1032,7 @@ static void op_buffer_cb(struct vchiq_mmal_instance *instance,
 		/* stream ended, or buffer being returned during disable. */
 		v4l2_dbg(2, debug, &ctx->dev->v4l2_dev, "%s: Empty buffer - flags %04x",
 			 __func__, mmal_buf->mmal_flags);
-		if (!mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS) {
+		if (!(mmal_buf->mmal_flags & MMAL_BUFFER_HEADER_FLAG_EOS)) {
 			vb2_buffer_done(&vb2->vb2_buf, VB2_BUF_STATE_ERROR);
 			if (!port->enabled)
 				complete(&ctx->frame_cmplt);
@@ -1135,7 +1259,7 @@ static int vidioc_try_fmt(struct bcm2835_codec_ctx *ctx, struct v4l2_format *f,
 	if (f->fmt.pix_mp.height > MAX_H)
 		f->fmt.pix_mp.height = MAX_H;
 
-	if (!fmt->flags & V4L2_FMT_FLAG_COMPRESSED) {
+	if (!(fmt->flags & V4L2_FMT_FLAG_COMPRESSED)) {
 		/* Only clip min w/h on capture. Treat 0x0 as unknown. */
 		if (f->fmt.pix_mp.width < MIN_W)
 			f->fmt.pix_mp.width = MIN_W;
@@ -2681,10 +2805,10 @@ static const struct v4l2_m2m_ops m2m_ops = {
 
 /* Size of the array to provide to the VPU when asking for the list of supported
  * formats.
- * The ISP component currently advertises 44 input formats, so add a small
+ * The ISP component currently advertises 62 input formats, so add a small
  * overhead on that.
  */
-#define MAX_SUPPORTED_ENCODINGS 50
+#define MAX_SUPPORTED_ENCODINGS 70
 
 /* Populate dev->supported_fmts with the formats supported by those ports. */
 static int bcm2835_codec_get_supported_fmts(struct bcm2835_codec_dev *dev)
@@ -2712,8 +2836,10 @@ static int bcm2835_codec_get_supported_fmts(struct bcm2835_codec_dev *dev)
 
 	if (ret) {
 		if (ret == MMAL_MSG_STATUS_ENOSPC) {
-			v4l2_err(&dev->v4l2_dev, "%s: port has more encoding than we provided space for. Some are dropped.\n",
-				 __func__);
+			v4l2_err(&dev->v4l2_dev,
+				 "%s: port has more encodings than we provided space for. Some are dropped (%u vs %u).\n",
+				 __func__, param_size / sizeof(u32),
+				 MAX_SUPPORTED_ENCODINGS);
 			num_encodings = MAX_SUPPORTED_ENCODINGS;
 		} else {
 			v4l2_err(&dev->v4l2_dev, "%s: get_param ret %u.\n",
@@ -2756,8 +2882,10 @@ static int bcm2835_codec_get_supported_fmts(struct bcm2835_codec_dev *dev)
 
 	if (ret) {
 		if (ret == MMAL_MSG_STATUS_ENOSPC) {
-			v4l2_err(&dev->v4l2_dev, "%s: port has more encoding than we provided space for. Some are dropped.\n",
-				 __func__);
+			v4l2_err(&dev->v4l2_dev,
+				 "%s: port has more encodings than we provided space for. Some are dropped (%u vs %u).\n",
+				 __func__, param_size / sizeof(u32),
+				 MAX_SUPPORTED_ENCODINGS);
 			num_encodings = MAX_SUPPORTED_ENCODINGS;
 		} else {
 			ret = -EINVAL;

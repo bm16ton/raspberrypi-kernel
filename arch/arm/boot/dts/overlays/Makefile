@@ -4,9 +4,12 @@ dtb-$(CONFIG_ARCH_BCM2835) += overlay_map.dtb
 
 dtbo-$(CONFIG_ARCH_BCM2835) += \
 	act-led.dtbo \
+	ad7890.dtbo \
 	adafruit18.dtbo \
 	adau1977-adc.dtbo \
 	adau7002-simple.dtbo \
+	adc0834.dtbo \
+    adc-spi.dtbo \
 	ads1015.dtbo \
 	ads1115.dtbo \
 	ads7846.dtbo \
@@ -22,6 +25,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	anyspi.dtbo \
 	apds9960.dtbo \
 	applepi-dac.dtbo \
+	argonfan.dtbo \
 	at86rf233.dtbo \
 	audioinjector-addons.dtbo \
 	audioinjector-isolated-soundcard.dtbo \
@@ -88,6 +92,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	i2c5.dtbo \
 	i2c6.dtbo \
 	i2s-gpio28-31.dtbo \
+	ili9486-fbtft.dtbo \
+	ili9486-drm.dtbo \
 	ilitek251x.dtbo \
 	imx219.dtbo \
 	imx290.dtbo \
@@ -101,6 +107,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	justboom-both.dtbo \
 	justboom-dac.dtbo \
 	justboom-digi.dtbo \
+	l3g4200d-i2c.dtbo \
+	l3g4200d-spi.dtbo \
 	ltc294x.dtbo \
 	max98357a.dtbo \
 	maxtherm.dtbo \
@@ -161,6 +169,8 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	sc16is752-spi1.dtbo \
 	sdhost.dtbo \
 	sdio.dtbo \
+	seeed-can-fd-hat-v1.dtbo \
+	seeed-can-fd-hat-v2.dtbo \
 	sh1106-spi.dtbo \
 	smi.dtbo \
 	smi-dev.dtbo \
@@ -208,10 +218,12 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	vc4-kms-v3d.dtbo \
 	vc4-kms-v3d-pi4.dtbo \
 	vga666.dtbo \
+	waveshare-st7789v.dtbo \
 	w1-gpio.dtbo \
 	w1-gpio-pullup.dtbo \
 	w5500.dtbo \
-	wittypi.dtbo
+	wittypi.dtbo \
+	wm8960-soundcard.dtbo
 
 targets += dtbs dtbs_install
 targets += $(dtbo-y)

@@ -1,22 +1,3 @@
-
-This kernel is to be used with firmware created by;
-https://github.com/bm16ton/nexmon-raspberrypi4
-If using arm64 OS and building locally
-git clone https://github.com/bm16ton/nexmon-raspberrypi4
-cd nexmon-raspberrypi4
-source setup_env.sh
-cd patches/bcm43455c0/7_45_189-arm64/nexmon
-(edit src/regulations.c to add/remove channels/restrictions
-make
-sudo cp brcmfmac43455-sdio.bin /lib/firmware/brcm/
-reboot
-
-the folder patches/bcm43455c0/7_45_189-arm64/nexutil
-has a version of nexutil with new options for getting
-power_save mode setting directly from firmware and
-new -K and -i -K options for decoding/encoding chspecs
-
-
 Linux kernel
 ============
 
