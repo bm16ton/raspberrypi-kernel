@@ -1,0 +1,48 @@
+/*
+ * TI ADC0834 ADC overlay
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target = <&spi0>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@1 {
+		target = <&spidev0>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@2 {
+		target = <&spidev1>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@3 {
+		target = <&spi0>;
+		__overlay__ {
+        #address-cells = <1>;
+        #size-cells = <0>;
+			status = "okay";
+
+       adc0832: adc0832@0 {
+            compatible = "ti,adc0834";
+            reg = <0>;
+            vref-supply = <&vdd_5v0_reg>;
+            spi-max-frequency = <200000>;
+            #io-channel-cells = <1>;
+		}; 
+       };
+    };
+};

@@ -1,0 +1,25 @@
+/*
+ * TI ad7890 ADC overlay
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target = <&spi0>;
+		__overlay__ {
+        #address-cells = <1>;
+        #size-cells = <0>;
+			status = "okay";
+
+       ad7890: ad7890@0 {
+            compatible = "spi,ad7890";
+            reg = <0>;
+            vref-supply = <&vdd_5v0_reg>;
+            spi-max-frequency = <200000>;
+            #io-channel-cells = <1>;
+		}; 
+       };
+    };
+};
