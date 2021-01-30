@@ -66,6 +66,8 @@ static ssize_t fan1_speed_store(struct device *dev, struct device_attribute *att
 	u8 value;
 	u8 ret2;
 	ret2 = kstrtou8(buf, 10, &value);
+    if (value > 100)
+			return -EINVAL;
     data->fan1_speed = value;
 
 	mutex_lock(&data->update_lock);
@@ -108,6 +110,9 @@ static ssize_t fan1_target_store(struct device *dev, struct device_attribute *at
 	u8 value;
 	u8 ret2;
 	ret2 = kstrtou8(buf, 10, &value);
+    if (value > 100)
+			return -EINVAL;
+
     data->fan1_speed = value;
 
 	mutex_lock(&data->update_lock);
@@ -203,6 +208,6 @@ static struct i2c_driver argonfan_driver = {
 module_i2c_driver(argonfan_driver);
 
 
-MODULE_AUTHOR("Ben Maddocks bm16ton@gmail");
+MODULE_AUTHOR("Ben Maddocks bm16ton@gmail.com");
 MODULE_DESCRIPTION("Driver for ArgonFan PiHat");
 MODULE_LICENSE("GPL");
