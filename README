@@ -1,3 +1,7 @@
+The current brcmfmac driver in thiskernel uses my firmwar/nexmon patches from here  
+https://github.com/bm16ton/nexmon-raspberrypi4     I also renamed the firmware file it looks 
+for to brcmfmac43455-16ton-sdio so any firmware package updates dont clobber it.
+
 Linux kernel
 ============
 
