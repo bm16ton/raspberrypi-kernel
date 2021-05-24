@@ -1,3 +1,10 @@
+The brcmfmac driver in this kernel requires special nexmon patched
+firmware from https://github.com/bm16ton/nexmon-raspberrypi4
+Upgrading this kernel from 5.10 to 5.12 had issues, I fixed everything
+as quickly and easily as possible and probly wont get back to it to
+update to newer versions for a while. But this kernel atm is stable
+and all seems working fine now.
+
 Linux kernel
 ============
 
