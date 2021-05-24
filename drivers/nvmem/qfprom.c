@@ -12,6 +12,7 @@
 #include <linux/mod_devicetable.h>
 #include <linux/nvmem-provider.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/regulator/consumer.h>
 
 /* Blow timer clock frequency in Mhz */
@@ -89,6 +90,28 @@ struct qfprom_touched_values {
 };
 
 /**
+ * struct qfprom_soc_compatible_data - Data matched against the SoC
+ * compatible string.
+ *
+ * @keepout: Array of keepout regions for this SoC.
+ * @nkeepout: Number of elements in the keepout array.
+ */
+struct qfprom_soc_compatible_data {
+	const struct nvmem_keepout *keepout;
+	unsigned int nkeepout;
+};
+
+static const struct nvmem_keepout sc7180_qfprom_keepout[] = {
+	{.start = 0x128, .end = 0x148},
+	{.start = 0x220, .end = 0x228}
+};
+
+static const struct qfprom_soc_compatible_data sc7180_qfprom = {
+	.keepout = sc7180_qfprom_keepout,
+	.nkeepout = ARRAY_SIZE(sc7180_qfprom_keepout)
+};
+
+/**
  * qfprom_disable_fuse_blowing() - Undo enabling of fuse blowing.
  * @priv: Our driver data.
  * @old:  The data that was stashed from before fuse blowing.
@@ -103,6 +126,16 @@ static void qfprom_disable_fuse_blowing(const struct qfprom_priv *priv,
 					const struct qfprom_touched_values *old)
 {
 	int ret;
+
+	/*
+	 * This may be a shared rail and may be able to run at a lower rate
+	 * when we're not blowing fuses.  At the moment, the regulator framework
+	 * applies voltage constraints even on disabled rails, so remove our
+	 * constraints and allow the rail to be adjusted by other users.
+	 */
+	ret = regulator_set_voltage(priv->vcc, 0, INT_MAX);
+	if (ret)
+		dev_warn(priv->dev, "Failed to set 0 voltage (ignoring)\n");
 
 	ret = regulator_disable(priv->vcc);
 	if (ret)
@@ -147,6 +180,17 @@ static int qfprom_enable_fuse_blowing(const struct qfprom_priv *priv,
 	if (ret) {
 		dev_err(priv->dev, "Failed to set clock rate for enable\n");
 		goto err_clk_prepared;
+	}
+
+	/*
+	 * Hardware requires 1.8V min for fuse blowing; this may be
+	 * a rail shared do don't specify a max--regulator constraints
+	 * will handle.
+	 */
+	ret = regulator_set_voltage(priv->vcc, 1800000, INT_MAX);
+	if (ret) {
+		dev_err(priv->dev, "Failed to set 1.8 voltage\n");
+		goto err_clk_rate_set;
 	}
 
 	ret = regulator_enable(priv->vcc);
@@ -281,6 +325,7 @@ static int qfprom_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct nvmem_device *nvmem;
+	const struct qfprom_soc_compatible_data *soc_data;
 	struct qfprom_priv *priv;
 	int ret;
 
@@ -299,6 +344,11 @@ static int qfprom_probe(struct platform_device *pdev)
 	econfig.priv = priv;
 
 	priv->dev = dev;
+	soc_data = device_get_match_data(dev);
+	if (soc_data) {
+		econfig.keepout = soc_data->keepout;
+		econfig.nkeepout = soc_data->nkeepout;
+	}
 
 	/*
 	 * If more than one region is provided then the OS has the ability
@@ -354,6 +404,7 @@ static int qfprom_probe(struct platform_device *pdev)
 
 static const struct of_device_id qfprom_of_match[] = {
 	{ .compatible = "qcom,qfprom",},
+	{ .compatible = "qcom,sc7180-qfprom", .data = &sc7180_qfprom},
 	{/* sentinel */},
 };
 MODULE_DEVICE_TABLE(of, qfprom_of_match);

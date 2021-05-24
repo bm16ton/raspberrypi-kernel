@@ -84,9 +84,9 @@
 #include <scsi/fc/fc_gs.h>
 
 #include <scsi/libfc.h>
-#include <scsi/fc_encode.h>
 #include <linux/scatterlist.h>
 
+#include "fc_encode.h"
 #include "fc_libfc.h"
 
 /* Fabric IDs to use for point-to-point mode, chosen on whims. */
@@ -1731,7 +1731,7 @@ void fc_lport_flogi_resp(struct fc_seq *sp, struct fc_frame *fp,
 
 	if (mfs < FC_SP_MIN_MAX_PAYLOAD || mfs > FC_SP_MAX_MAX_PAYLOAD) {
 		FC_LPORT_DBG(lport, "FLOGI bad mfs:%hu response, "
-			     "lport->mfs:%hu\n", mfs, lport->mfs);
+			     "lport->mfs:%u\n", mfs, lport->mfs);
 		fc_lport_error(lport, fp);
 		goto out;
 	}

@@ -303,7 +303,7 @@ struct ti_device {
 static int ti_startup(struct usb_serial *serial);
 static void ti_release(struct usb_serial *serial);
 static int ti_port_probe(struct usb_serial_port *port);
-static int ti_port_remove(struct usb_serial_port *port);
+static void ti_port_remove(struct usb_serial_port *port);
 static int ti_open(struct tty_struct *tty, struct usb_serial_port *port);
 static void ti_close(struct usb_serial_port *port);
 static int ti_write(struct tty_struct *tty, struct usb_serial_port *port,
@@ -629,14 +629,12 @@ static int ti_port_probe(struct usb_serial_port *port)
 	return 0;
 }
 
-static int ti_port_remove(struct usb_serial_port *port)
+static void ti_port_remove(struct usb_serial_port *port)
 {
 	struct ti_port *tport;
 
 	tport = usb_get_serial_port_data(port);
 	kfree(tport);
-
-	return 0;
 }
 
 static int ti_open(struct tty_struct *tty, struct usb_serial_port *port)
@@ -1420,14 +1418,19 @@ static int ti_set_serial_info(struct tty_struct *tty,
 	struct serial_struct *ss)
 {
 	struct usb_serial_port *port = tty->driver_data;
-	struct ti_port *tport = usb_get_serial_port_data(port);
+	struct tty_port *tport = &port->port;
 	unsigned cwait;
 
 	cwait = ss->closing_wait;
 	if (cwait != ASYNC_CLOSING_WAIT_NONE)
 		cwait = msecs_to_jiffies(10 * ss->closing_wait);
 
-	tport->tp_port->port.closing_wait = cwait;
+	if (!capable(CAP_SYS_ADMIN)) {
+		if (cwait != tport->closing_wait)
+			return -EPERM;
+	}
+
+	tport->closing_wait = cwait;
 
 	return 0;
 }

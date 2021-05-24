@@ -1261,7 +1261,6 @@ static int vio_bus_remove(struct device *dev)
 	struct vio_dev *viodev = to_vio_dev(dev);
 	struct vio_driver *viodrv = to_vio_driver(dev->driver);
 	struct device *devptr;
-	int ret = 1;
 
 	/*
 	 * Hold a reference to the device after the remove function is called
@@ -1270,13 +1269,13 @@ static int vio_bus_remove(struct device *dev)
 	devptr = get_device(dev);
 
 	if (viodrv->remove)
-		ret = viodrv->remove(viodev);
+		viodrv->remove(viodev);
 
-	if (!ret && firmware_has_feature(FW_FEATURE_CMO))
+	if (firmware_has_feature(FW_FEATURE_CMO))
 		vio_cmo_bus_remove(viodev);
 
 	put_device(devptr);
-	return ret;
+	return 0;
 }
 
 /**
@@ -1286,6 +1285,10 @@ static int vio_bus_remove(struct device *dev)
 int __vio_register_driver(struct vio_driver *viodrv, struct module *owner,
 			  const char *mod_name)
 {
+	// vio_bus_type is only initialised for pseries
+	if (!machine_is(pseries))
+		return -ENODEV;
+
 	pr_debug("%s: driver %s registering\n", __func__, viodrv->name);
 
 	/* fill in 'struct driver' fields */

@@ -16,6 +16,23 @@ struct core_reloc_kernel_output {
 };
 
 /*
+ * MODULE
+ */
+
+struct core_reloc_module_output {
+	long long len;
+	long long off;
+	int read_ctx_sz;
+	bool read_ctx_exists;
+	bool buf_exists;
+	bool len_exists;
+	bool off_exists;
+	/* we have test_progs[-flavor], so cut flavor part */
+	char comm[sizeof("test_progs")];
+	int comm_len;
+};
+
+/*
  * FLAVORS
  */
 struct core_reloc_flavors {
@@ -683,27 +700,11 @@ struct core_reloc_existence___minimal {
 	int a;
 };
 
-struct core_reloc_existence___err_wrong_int_sz {
-	short a;
-};
-
-struct core_reloc_existence___err_wrong_int_type {
+struct core_reloc_existence___wrong_field_defs {
+	void *a;
 	int b[1];
-};
-
-struct core_reloc_existence___err_wrong_int_kind {
 	struct{ int x; } c;
-};
-
-struct core_reloc_existence___err_wrong_arr_kind {
 	int arr;
-};
-
-struct core_reloc_existence___err_wrong_arr_value_type {
-	short arr[1];
-};
-
-struct core_reloc_existence___err_wrong_struct_type {
 	int s;
 };
 

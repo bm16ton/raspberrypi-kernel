@@ -66,7 +66,7 @@
 #define CBUF_LEN	(128)
 
 /* Device console log buffer state */
-#define CONSOLE_BUFFER_MAX	2024
+#define CONSOLE_BUFFER_MAX	4096
 
 struct rte_log_le {
 	__le32 buf;		/* Can't be pointer on (64-bit) hosts */
@@ -619,13 +619,18 @@ BRCMF_FW_DEF(43430A0, "brcmfmac43430a0-sdio");
 /* Note the names are not postfixed with a1 for backward compatibility */
 BRCMF_FW_DEF(43430A1, "brcmfmac43430-sdio");
 BRCMF_FW_DEF(43436, "brcmfmac43436-sdio");
-BRCMF_FW_DEF(43455, "brcmfmac43455-sdio");
+//16ton BRCMF_FW_DEF(43455, "brcmfmac43455-sdio");
+BRCMF_FW_DEF(43455, "brcmfmac43455-16ton-sdio");
 BRCMF_FW_DEF(43456, "brcmfmac43456-sdio");
 BRCMF_FW_DEF(4354, "brcmfmac4354-sdio");
 BRCMF_FW_DEF(4356, "brcmfmac4356-sdio");
 BRCMF_FW_DEF(4359, "brcmfmac4359-sdio");
 BRCMF_FW_DEF(4373, "brcmfmac4373-sdio");
 BRCMF_FW_DEF(43012, "brcmfmac43012-sdio");
+
+/* firmware config files */
+MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcm/brcmfmac*-sdio.*.txt");
+MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcm/brcmfmac*-pcie.*.txt");
 
 static const struct brcmf_firmware_mapping brcmf_sdio_fwnames[] = {
 	BRCMF_FW_ENTRY(BRCM_CC_43143_CHIP_ID, 0xFFFFFFFF, 43143),
@@ -1343,7 +1348,7 @@ static void brcmf_sdio_free_glom(struct brcmf_sdio *bus)
 static inline u8 brcmf_sdio_getdatoffset(u8 *swheader)
 {
 	u32 hdrvalue;
-	hdrvalue = *(u32 *)swheader;
+	hdrvalue = le32_to_cpu(*(__le32 *)swheader);
 	return (u8)((hdrvalue & SDPCM_DOFFSET_MASK) >> SDPCM_DOFFSET_SHIFT);
 }
 
@@ -1352,7 +1357,7 @@ static inline bool brcmf_sdio_fromevntchan(u8 *swheader)
 	u32 hdrvalue;
 	u8 ret;
 
-	hdrvalue = *(u32 *)swheader;
+	hdrvalue = le32_to_cpu(*(__le32 *)swheader);
 	ret = (u8)((hdrvalue & SDPCM_CHANNEL_MASK) >> SDPCM_CHANNEL_SHIFT);
 
 	return (ret == SDPCM_EVENT_CHANNEL);
@@ -3201,7 +3206,7 @@ static int brcmf_debugfs_sdio_count_read(struct seq_file *seq, void *data)
 	return 0;
 }
 
-static void brcmf_sdio_debugfs_create(struct device *dev)
+void brcmf_sdio_debugfs_create(struct device *dev)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
 	struct brcmf_pub *drvr = bus_if->drvr;
@@ -3226,7 +3231,7 @@ static int brcmf_sdio_checkdied(struct brcmf_sdio *bus)
 	return 0;
 }
 
-static void brcmf_sdio_debugfs_create(struct device *dev)
+void brcmf_sdio_debugfs_create(struct device *dev)
 {
 }
 #endif /* DEBUG */
@@ -3520,6 +3525,7 @@ static int brcmf_sdio_bus_preinit(struct device *dev)
 	struct brcmf_sdio *bus = sdiodev->bus;
 	struct brcmf_core *core = bus->sdio_core;
 	u32 value;
+	__le32 iovar;
 	int err;
 
 	/* maxctl provided by common layer */
@@ -3540,16 +3546,16 @@ static int brcmf_sdio_bus_preinit(struct device *dev)
 	 */
 	if (core->rev < 12) {
 		/* for sdio core rev < 12, disable txgloming */
-		value = 0;
-		err = brcmf_iovar_data_set(dev, "bus:txglom", &value,
-					   sizeof(u32));
+		iovar = 0;
+		err = brcmf_iovar_data_set(dev, "bus:txglom", &iovar,
+					   sizeof(iovar));
 	} else {
 		/* otherwise, set txglomalign */
 		value = sdiodev->settings->bus.sdio.sd_sgentry_align;
 		/* SDIO ADMA requires at least 32 bit alignment */
-		value = max_t(u32, value, ALIGNMENT);
-		err = brcmf_iovar_data_set(dev, "bus:txglomalign", &value,
-					   sizeof(u32));
+		iovar = cpu_to_le32(max_t(u32, value, ALIGNMENT));
+		err = brcmf_iovar_data_set(dev, "bus:txglomalign", &iovar,
+					   sizeof(iovar));
 	}
 
 	if (err < 0)
@@ -3558,9 +3564,9 @@ static int brcmf_sdio_bus_preinit(struct device *dev)
 	bus->tx_hdrlen = SDPCM_HWHDR_LEN + SDPCM_SWHDR_LEN;
 	if (sdiodev->sg_support) {
 		bus->txglom = false;
-		value = 1;
+		iovar = cpu_to_le32(1);
 		err = brcmf_iovar_data_set(bus->sdiodev->dev, "bus:rxglom",
-					   &value, sizeof(u32));
+					   &iovar, sizeof(iovar));
 		if (err < 0) {
 			/* bus:rxglom is allowed to fail */
 			err = 0;

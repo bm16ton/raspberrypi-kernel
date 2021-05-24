@@ -74,7 +74,7 @@ module_param(debug, int, 0600);
 #define MAX_MTU 1500
 #define	GSM_NET_TX_TIMEOUT (HZ*10)
 
-/**
+/*
  *	struct gsm_mux_net	-	network interface
  *
  *	Created when net interface is initialized.
@@ -651,6 +651,7 @@ static struct gsm_msg *gsm_data_alloc(struct gsm_mux *gsm, u8 addr, int len,
 /**
  *	gsm_data_kick		-	poke the queue
  *	@gsm: GSM Mux
+ *	@dlci: DLCI sending the data
  *
  *	The tty device has called us to indicate that room has appeared in
  *	the transmit queue. Ram more data into the pipe if we have any
@@ -1005,6 +1006,7 @@ static void gsm_control_reply(struct gsm_mux *gsm, int cmd, const u8 *data,
  *	@tty: virtual tty bound to the DLCI
  *	@dlci: DLCI to affect
  *	@modem: modem bits (full EA)
+ *	@clen: command length
  *
  *	Used when a modem control message or line state inline in adaption
  *	layer 2 is processed. Sort out the local modem state and throttles
@@ -2382,8 +2384,18 @@ static int gsmld_attach_gsm(struct tty_struct *tty, struct gsm_mux *gsm)
 		/* Don't register device 0 - this is the control channel and not
 		   a usable tty interface */
 		base = mux_num_to_base(gsm); /* Base for this MUX */
-		for (i = 1; i < NUM_DLCI; i++)
-			tty_register_device(gsm_tty_driver, base + i, NULL);
+		for (i = 1; i < NUM_DLCI; i++) {
+			struct device *dev;
+
+			dev = tty_register_device(gsm_tty_driver,
+							base + i, NULL);
+			if (IS_ERR(dev)) {
+				for (i--; i >= 1; i--)
+					tty_unregister_device(gsm_tty_driver,
+								base + i);
+				return PTR_ERR(dev);
+			}
+		}
 	}
 	return ret;
 }
@@ -2557,7 +2569,8 @@ static void gsmld_write_wakeup(struct tty_struct *tty)
  */
 
 static ssize_t gsmld_read(struct tty_struct *tty, struct file *file,
-			 unsigned char __user *buf, size_t nr)
+			  unsigned char *buf, size_t nr,
+			  void **cookie, unsigned long offset)
 {
 	return -EOPNOTSUPP;
 }

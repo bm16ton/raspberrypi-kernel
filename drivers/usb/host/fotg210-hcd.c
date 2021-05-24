@@ -1951,7 +1951,7 @@ static int fotg210_mem_init(struct fotg210_hcd *fotg210, gfp_t flags)
 		goto fail;
 
 	/* Hardware periodic table */
-	fotg210->periodic = (__le32 *)
+	fotg210->periodic =
 		dma_alloc_coherent(fotg210_to_hcd(fotg210)->self.controller,
 				fotg210->periodic_size * sizeof(__le32),
 				&fotg210->periodic_dma, 0);
@@ -5276,7 +5276,7 @@ static int fotg210_urb_enqueue(struct usb_hcd *hcd, struct urb *urb,
 		 */
 		if (urb->transfer_buffer_length > (16 * 1024))
 			return -EMSGSIZE;
-		/* FALLTHROUGH */
+		fallthrough;
 	/* case PIPE_BULK: */
 	default:
 		if (!qh_urb_transaction(fotg210, urb, &qtd_list, mem_flags))
@@ -5568,7 +5568,7 @@ static int fotg210_hcd_probe(struct platform_device *pdev)
 	struct usb_hcd *hcd;
 	struct resource *res;
 	int irq;
-	int retval = -ENODEV;
+	int retval;
 	struct fotg210_hcd *fotg210;
 
 	if (usb_disabled())
@@ -5588,7 +5588,7 @@ static int fotg210_hcd_probe(struct platform_device *pdev)
 	hcd = usb_create_hcd(&fotg210_fotg210_hc_driver, dev,
 			dev_name(dev));
 	if (!hcd) {
-		dev_err(dev, "failed to create hcd with err %d\n", retval);
+		dev_err(dev, "failed to create hcd\n");
 		retval = -ENOMEM;
 		goto fail_create_hcd;
 	}

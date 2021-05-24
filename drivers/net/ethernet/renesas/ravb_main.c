@@ -911,31 +911,20 @@ static int ravb_poll(struct napi_struct *napi, int budget)
 	int q = napi - priv->napi;
 	int mask = BIT(q);
 	int quota = budget;
-	u32 ris0, tis;
 
-	for (;;) {
-		tis = ravb_read(ndev, TIS);
-		ris0 = ravb_read(ndev, RIS0);
-		if (!((ris0 & mask) || (tis & mask)))
-			break;
+	/* Processing RX Descriptor Ring */
+	/* Clear RX interrupt */
+	ravb_write(ndev, ~(mask | RIS0_RESERVED), RIS0);
+	if (ravb_rx(ndev, &quota, q))
+		goto out;
 
-		/* Processing RX Descriptor Ring */
-		if (ris0 & mask) {
-			/* Clear RX interrupt */
-			ravb_write(ndev, ~(mask | RIS0_RESERVED), RIS0);
-			if (ravb_rx(ndev, &quota, q))
-				goto out;
-		}
-		/* Processing TX Descriptor Ring */
-		if (tis & mask) {
-			spin_lock_irqsave(&priv->lock, flags);
-			/* Clear TX interrupt */
-			ravb_write(ndev, ~(mask | TIS_RESERVED), TIS);
-			ravb_tx_free(ndev, q, true);
-			netif_wake_subqueue(ndev, q);
-			spin_unlock_irqrestore(&priv->lock, flags);
-		}
-	}
+	/* Processing RX Descriptor Ring */
+	spin_lock_irqsave(&priv->lock, flags);
+	/* Clear TX interrupt */
+	ravb_write(ndev, ~(mask | TIS_RESERVED), TIS);
+	ravb_tx_free(ndev, q, true);
+	netif_wake_subqueue(ndev, q);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	napi_complete(napi);
 
@@ -2034,10 +2023,10 @@ static void ravb_set_delay_mode(struct net_device *ndev)
 	u32 set = 0;
 
 	if (priv->rxcidm)
-		set |= APSR_DM_RDM;
+		set |= APSR_RDM;
 	if (priv->txcidm)
-		set |= APSR_DM_TDM;
-	ravb_modify(ndev, APSR, APSR_DM, set);
+		set |= APSR_TDM;
+	ravb_modify(ndev, APSR, APSR_RDM | APSR_TDM, set);
 }
 
 static int ravb_probe(struct platform_device *pdev)

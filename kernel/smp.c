@@ -14,6 +14,7 @@
 #include <linux/export.h>
 #include <linux/percpu.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
@@ -27,7 +28,7 @@
 #include "smpboot.h"
 #include "sched/smp.h"
 
-#define CSD_TYPE(_csd)	((_csd)->flags & CSD_FLAG_TYPE_MASK)
+#define CSD_TYPE(_csd)	((_csd)->node.u_flags & CSD_FLAG_TYPE_MASK)
 
 struct call_function_data {
 	call_single_data_t	__percpu *csd;
@@ -109,7 +110,7 @@ static DEFINE_PER_CPU(void *, cur_csd_info);
 static atomic_t csd_bug_count = ATOMIC_INIT(0);
 
 /* Record current CSD work for current CPU, NULL to erase. */
-static void csd_lock_record(call_single_data_t *csd)
+static void csd_lock_record(struct __call_single_data *csd)
 {
 	if (!csd) {
 		smp_mb(); /* NULL cur_csd after unlock. */
@@ -124,13 +125,13 @@ static void csd_lock_record(call_single_data_t *csd)
 		  /* Or before unlock, as the case may be. */
 }
 
-static __always_inline int csd_lock_wait_getcpu(call_single_data_t *csd)
+static __always_inline int csd_lock_wait_getcpu(struct __call_single_data *csd)
 {
 	unsigned int csd_type;
 
 	csd_type = CSD_TYPE(csd);
 	if (csd_type == CSD_TYPE_ASYNC || csd_type == CSD_TYPE_SYNC)
-		return csd->dst; /* Other CSD_TYPE_ values might not have ->dst. */
+		return csd->node.dst; /* Other CSD_TYPE_ values might not have ->dst. */
 	return -1;
 }
 
@@ -139,14 +140,14 @@ static __always_inline int csd_lock_wait_getcpu(call_single_data_t *csd)
  * the CSD_TYPE_SYNC/ASYNC types provide the destination CPU,
  * so waiting on other types gets much less information.
  */
-static __always_inline bool csd_lock_wait_toolong(call_single_data_t *csd, u64 ts0, u64 *ts1, int *bug_id)
+static __always_inline bool csd_lock_wait_toolong(struct __call_single_data *csd, u64 ts0, u64 *ts1, int *bug_id)
 {
 	int cpu = -1;
 	int cpux;
 	bool firsttime;
 	u64 ts2, ts_delta;
 	call_single_data_t *cpu_cur_csd;
-	unsigned int flags = READ_ONCE(csd->flags);
+	unsigned int flags = READ_ONCE(csd->node.u_flags);
 
 	if (!(flags & CSD_FLAG_LOCK)) {
 		if (!unlikely(*bug_id))
@@ -203,7 +204,7 @@ static __always_inline bool csd_lock_wait_toolong(call_single_data_t *csd, u64 t
  * previous function call. For multi-cpu calls its even more interesting
  * as we'll have to ensure no other cpu is observing our csd.
  */
-static __always_inline void csd_lock_wait(call_single_data_t *csd)
+static __always_inline void csd_lock_wait(struct __call_single_data *csd)
 {
 	int bug_id = 0;
 	u64 ts0, ts1;
@@ -218,20 +219,20 @@ static __always_inline void csd_lock_wait(call_single_data_t *csd)
 }
 
 #else
-static void csd_lock_record(call_single_data_t *csd)
+static void csd_lock_record(struct __call_single_data *csd)
 {
 }
 
-static __always_inline void csd_lock_wait(call_single_data_t *csd)
+static __always_inline void csd_lock_wait(struct __call_single_data *csd)
 {
-	smp_cond_load_acquire(&csd->flags, !(VAL & CSD_FLAG_LOCK));
+	smp_cond_load_acquire(&csd->node.u_flags, !(VAL & CSD_FLAG_LOCK));
 }
 #endif
 
-static __always_inline void csd_lock(call_single_data_t *csd)
+static __always_inline void csd_lock(struct __call_single_data *csd)
 {
 	csd_lock_wait(csd);
-	csd->flags |= CSD_FLAG_LOCK;
+	csd->node.u_flags |= CSD_FLAG_LOCK;
 
 	/*
 	 * prevent CPU from reordering the above assignment
@@ -241,14 +242,14 @@ static __always_inline void csd_lock(call_single_data_t *csd)
 	smp_wmb();
 }
 
-static __always_inline void csd_unlock(call_single_data_t *csd)
+static __always_inline void csd_unlock(struct __call_single_data *csd)
 {
-	WARN_ON(!(csd->flags & CSD_FLAG_LOCK));
+	WARN_ON(!(csd->node.u_flags & CSD_FLAG_LOCK));
 
 	/*
 	 * ensure we're all done before releasing data:
 	 */
-	smp_store_release(&csd->flags, 0);
+	smp_store_release(&csd->node.u_flags, 0);
 }
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(call_single_data_t, csd_data);
@@ -275,7 +276,7 @@ void __smp_call_single_queue(int cpu, struct llist_node *node)
  * for execution on the given CPU. data must already have
  * ->func, ->info, and ->flags set.
  */
-static int generic_exec_single(int cpu, call_single_data_t *csd)
+static int generic_exec_single(int cpu, struct __call_single_data *csd)
 {
 	if (cpu == smp_processor_id()) {
 		smp_call_func_t func = csd->func;
@@ -300,7 +301,7 @@ static int generic_exec_single(int cpu, call_single_data_t *csd)
 		return -ENXIO;
 	}
 
-	__smp_call_single_queue(cpu, &csd->llist);
+	__smp_call_single_queue(cpu, &csd->node.llist);
 
 	return 0;
 }
@@ -353,7 +354,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 		 * We don't have to use the _safe() variant here
 		 * because we are not invoking the IPI handlers yet.
 		 */
-		llist_for_each_entry(csd, entry, llist) {
+		llist_for_each_entry(csd, entry, node.llist) {
 			switch (CSD_TYPE(csd)) {
 			case CSD_TYPE_ASYNC:
 			case CSD_TYPE_SYNC:
@@ -378,16 +379,16 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 	 * First; run all SYNC callbacks, people are waiting for us.
 	 */
 	prev = NULL;
-	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
+	llist_for_each_entry_safe(csd, csd_next, entry, node.llist) {
 		/* Do we wait until *after* callback? */
 		if (CSD_TYPE(csd) == CSD_TYPE_SYNC) {
 			smp_call_func_t func = csd->func;
 			void *info = csd->info;
 
 			if (prev) {
-				prev->next = &csd_next->llist;
+				prev->next = &csd_next->node.llist;
 			} else {
-				entry = &csd_next->llist;
+				entry = &csd_next->node.llist;
 			}
 
 			csd_lock_record(csd);
@@ -395,7 +396,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 			csd_unlock(csd);
 			csd_lock_record(NULL);
 		} else {
-			prev = &csd->llist;
+			prev = &csd->node.llist;
 		}
 	}
 
@@ -406,14 +407,14 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 	 * Second; run all !SYNC callbacks.
 	 */
 	prev = NULL;
-	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
+	llist_for_each_entry_safe(csd, csd_next, entry, node.llist) {
 		int type = CSD_TYPE(csd);
 
 		if (type != CSD_TYPE_TTWU) {
 			if (prev) {
-				prev->next = &csd_next->llist;
+				prev->next = &csd_next->node.llist;
 			} else {
-				entry = &csd_next->llist;
+				entry = &csd_next->node.llist;
 			}
 
 			if (type == CSD_TYPE_ASYNC) {
@@ -429,7 +430,7 @@ static void flush_smp_call_function_queue(bool warn_cpu_offline)
 			}
 
 		} else {
-			prev = &csd->llist;
+			prev = &csd->node.llist;
 		}
 	}
 
@@ -449,6 +450,9 @@ void flush_smp_call_function_from_idle(void)
 
 	local_irq_save(flags);
 	flush_smp_call_function_queue(true);
+	if (local_softirq_pending())
+		do_softirq();
+
 	local_irq_restore(flags);
 }
 
@@ -465,7 +469,7 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 {
 	call_single_data_t *csd;
 	call_single_data_t csd_stack = {
-		.flags = CSD_FLAG_LOCK | CSD_TYPE_SYNC,
+		.node = { .u_flags = CSD_FLAG_LOCK | CSD_TYPE_SYNC, },
 	};
 	int this_cpu;
 	int err;
@@ -502,8 +506,8 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	csd->func = func;
 	csd->info = info;
 #ifdef CONFIG_CSD_LOCK_WAIT_DEBUG
-	csd->src = smp_processor_id();
-	csd->dst = cpu;
+	csd->node.src = smp_processor_id();
+	csd->node.dst = cpu;
 #endif
 
 	err = generic_exec_single(cpu, csd);
@@ -538,18 +542,18 @@ EXPORT_SYMBOL(smp_call_function_single);
  * NOTE: Be careful, there is unfortunately no current debugging facility to
  * validate the correctness of this serialization.
  */
-int smp_call_function_single_async(int cpu, call_single_data_t *csd)
+int smp_call_function_single_async(int cpu, struct __call_single_data *csd)
 {
 	int err = 0;
 
 	preempt_disable();
 
-	if (csd->flags & CSD_FLAG_LOCK) {
+	if (csd->node.u_flags & CSD_FLAG_LOCK) {
 		err = -EBUSY;
 		goto out;
 	}
 
-	csd->flags = CSD_FLAG_LOCK;
+	csd->node.u_flags = CSD_FLAG_LOCK;
 	smp_wmb();
 
 	err = generic_exec_single(cpu, csd);
@@ -667,14 +671,14 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 
 		csd_lock(csd);
 		if (wait)
-			csd->flags |= CSD_TYPE_SYNC;
+			csd->node.u_flags |= CSD_TYPE_SYNC;
 		csd->func = func;
 		csd->info = info;
 #ifdef CONFIG_CSD_LOCK_WAIT_DEBUG
-		csd->src = smp_processor_id();
-		csd->dst = cpu;
+		csd->node.src = smp_processor_id();
+		csd->node.dst = cpu;
 #endif
-		if (llist_add(&csd->llist, &per_cpu(call_single_queue, cpu)))
+		if (llist_add(&csd->node.llist, &per_cpu(call_single_queue, cpu)))
 			__cpumask_set_cpu(cpu, cfd->cpumask_ipi);
 	}
 

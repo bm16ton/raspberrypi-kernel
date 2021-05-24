@@ -490,6 +490,7 @@ static int rpivid_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct rpivid_ctx *ctx = vb2_get_drv_priv(vq);
 	struct rpivid_dev *dev = ctx->dev;
+	long max_hevc_clock = clk_round_rate(dev->clock, ULONG_MAX);
 	int ret = 0;
 
 	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_HEVC_SLICE)
@@ -498,8 +499,8 @@ static int rpivid_start_streaming(struct vb2_queue *vq, unsigned int count)
 	if (V4L2_TYPE_IS_OUTPUT(vq->type) && dev->dec_ops->start)
 		ret = dev->dec_ops->start(ctx);
 
-	ret = clk_set_rate(dev->clock, 500 * 1000 * 1000);
-	if (ret) {
+	dev->hevc_req = clk_request_start(dev->clock, max_hevc_clock);
+	if (!dev->hevc_req) {
 		dev_err(dev->dev, "Failed to set clock rate\n");
 		goto out;
 	}
@@ -525,6 +526,11 @@ static void rpivid_stop_streaming(struct vb2_queue *vq)
 
 	rpivid_queue_cleanup(vq, VB2_BUF_STATE_ERROR);
 
+	if (dev->hevc_req)
+	{
+		clk_request_done(dev->hevc_req);
+		dev->hevc_req = NULL;
+	}
 	clk_disable_unprepare(dev->clock);
 }
 

@@ -28,6 +28,24 @@
 #include "pcie.h"
 #include "common.h"
 
+/* NEXMON */
+#include <linux/if_arp.h>
+#include <linux/netlink.h>
+#include "nexmon_ioctls.h"
+#include "defs.h"
+#include "sdio.h"
+
+/* NEXMON */
+#define NETLINK_USER                     31
+#define NEXUDP_IOCTL                      0
+
+#define MONITOR_DISABLED  0
+#define MONITOR_IEEE80211 1
+#define MONITOR_RADIOTAP  2
+#define MONITOR_LOG_ONLY  3
+#define MONITOR_DROP_FRM  4
+#define MONITOR_IPV4_UDP  5
+
 #define MAX_WAIT_FOR_8021X_TX			msecs_to_jiffies(950)
 
 #define BRCMF_BSSIDX_INVALID			-1
@@ -61,6 +79,76 @@ struct wlc_d11rxhdr {
 	s8 do_rssi_ma;
 	s8 rxpwr[4];
 } __packed;
+
+
+ /*NEXMON*/
+static struct netlink_kernel_cfg cfg = {0};
+static struct sock *nl_sock = NULL;
+static struct net_device *ndev_global = NULL;
+
+ struct nexudp_header {
+    char nex[3];
+    char type;
+    int securitycookie;
+} __attribute__((packed));
+
+ struct nexudp_ioctl_header {
+    struct nexudp_header nexudphdr;
+    unsigned int cmd;
+    unsigned int set;
+    char payload[1];
+} __attribute__((packed));
+
+ static void
+nexmon_nl_ioctl_handler(struct sk_buff *skb)
+{
+    struct nlmsghdr *nlh = (struct nlmsghdr *) skb->data;
+    struct nexudp_ioctl_header *frame = (struct nexudp_ioctl_header *) nlmsg_data(nlh);
+    struct brcmf_if *ifp = netdev_priv(ndev_global);
+    struct sk_buff *skb_out;
+    struct nlmsghdr *nlh_tx;
+
+     brcmf_err("NEXMON: %s: Enter\n", __FUNCTION__);
+
+     brcmf_err("NEXMON: %s: %08x %d %d\n", __FUNCTION__, *(int *) frame->nexudphdr.nex, nlmsg_len(nlh), skb->len);
+
+     if (memcmp(frame->nexudphdr.nex, "NEX", 3)) {
+        brcmf_err("NEXMON: %s: invalid nexudp_ioctl_header\n", __FUNCTION__);
+        return;
+    }
+
+     if (frame->nexudphdr.type != NEXUDP_IOCTL) {
+        brcmf_err("NEXMON: %s: invalid frame type\n", __FUNCTION__);
+        return;
+    }
+
+     if (ifp == NULL) {
+        brcmf_err("NEXMON: %s: ifp is NULL\n", __FUNCTION__);
+        return;
+    }
+
+     if (frame->set) {
+        brcmf_err("NEXMON: %s: calling brcmf_fil_cmd_data_set, cmd: %d\n", __FUNCTION__, frame->cmd);
+        brcmf_fil_cmd_data_set(ifp, frame->cmd, frame->payload, nlmsg_len(nlh) - sizeof(struct nexudp_ioctl_header) + sizeof(char));
+
+         skb_out = nlmsg_new(4, 0);
+        nlh_tx = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, 4, 0);
+        NETLINK_CB(skb_out).dst_group = 0; /* not in mcast group */
+        memcpy(nlmsg_data(nlh_tx), "ACK", 4);
+        nlmsg_unicast(nl_sock, skb_out, nlh->nlmsg_pid);
+    } else {
+        brcmf_err("NEXMON: %s: calling brcmf_fil_cmd_data_get, cmd: %d\n", __FUNCTION__, frame->cmd);
+        brcmf_fil_cmd_data_get(ifp, frame->cmd, frame->payload, nlmsg_len(nlh) - sizeof(struct nexudp_ioctl_header) + sizeof(char));
+
+         skb_out = nlmsg_new(nlmsg_len(nlh), 0);
+        nlh_tx = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, nlmsg_len(nlh), 0);
+        NETLINK_CB(skb_out).dst_group = 0; /* not in mcast group */
+        memcpy(nlmsg_data(nlh_tx), frame, nlmsg_len(nlh));
+        nlmsg_unicast(nl_sock, skb_out, nlh->nlmsg_pid);
+    }
+
+     brcmf_err("NEXMON: %s: Exit\n", __FUNCTION__);
+}
 
 char *brcmf_ifname(struct brcmf_if *ifp)
 {
@@ -621,7 +709,8 @@ static int brcmf_netdev_open(struct net_device *ndev)
 	}
 
 	/* Clear, carrier, set when connected or AP mode. */
-	netif_carrier_off(ndev);
+    /* NEXMON */
+	//netif_carrier_off(ndev);
 	return 0;
 }
 
@@ -633,7 +722,7 @@ static const struct net_device_ops brcmf_netdev_ops_pri = {
 	.ndo_set_rx_mode = brcmf_netdev_set_multicast_list
 };
 
-int brcmf_net_attach(struct brcmf_if *ifp, bool rtnl_locked)
+int brcmf_net_attach(struct brcmf_if *ifp, bool locked)
 {
 	struct brcmf_pub *drvr = ifp->drvr;
 	struct net_device *ndev;
@@ -642,6 +731,9 @@ int brcmf_net_attach(struct brcmf_if *ifp, bool rtnl_locked)
 	brcmf_dbg(TRACE, "Enter, bsscfgidx=%d mac=%pM\n", ifp->bsscfgidx,
 		  ifp->mac_addr);
 	ndev = ifp->ndev;
+
+    /* NEXMON */
+    ndev_global = ndev;
 
 	/* set appropriate operations */
 	ndev->netdev_ops = &brcmf_netdev_ops_pri;
@@ -656,8 +748,8 @@ int brcmf_net_attach(struct brcmf_if *ifp, bool rtnl_locked)
 	INIT_WORK(&ifp->multicast_work, _brcmf_set_multicast_list);
 	INIT_WORK(&ifp->ndoffload_work, _brcmf_update_ndtable);
 
-	if (rtnl_locked)
-		err = register_netdevice(ndev);
+	if (locked)
+		err = cfg80211_register_netdevice(ndev);
 	else
 		err = register_netdev(ndev);
 	if (err != 0) {
@@ -677,11 +769,11 @@ fail:
 	return -EBADE;
 }
 
-void brcmf_net_detach(struct net_device *ndev, bool rtnl_locked)
+void brcmf_net_detach(struct net_device *ndev, bool locked)
 {
 	if (ndev->reg_state == NETREG_REGISTERED) {
-		if (rtnl_locked)
-			unregister_netdevice(ndev);
+		if (locked)
+			cfg80211_unregister_netdevice(ndev);
 		else
 			unregister_netdev(ndev);
 	} else {
@@ -758,7 +850,7 @@ int brcmf_net_mon_attach(struct brcmf_if *ifp)
 	ndev = ifp->ndev;
 	ndev->netdev_ops = &brcmf_netdev_ops_mon;
 
-	err = register_netdevice(ndev);
+	err = cfg80211_register_netdevice(ndev);
 	if (err)
 		bphy_err(drvr, "Failed to register %s device\n", ndev->name);
 
@@ -909,7 +1001,7 @@ struct brcmf_if *brcmf_add_if(struct brcmf_pub *drvr, s32 bsscfgidx, s32 ifidx,
 }
 
 static void brcmf_del_if(struct brcmf_pub *drvr, s32 bsscfgidx,
-			 bool rtnl_locked)
+			 bool locked)
 {
 	struct brcmf_if *ifp;
 	int ifidx;
@@ -938,7 +1030,7 @@ static void brcmf_del_if(struct brcmf_pub *drvr, s32 bsscfgidx,
 			cancel_work_sync(&ifp->multicast_work);
 			cancel_work_sync(&ifp->ndoffload_work);
 		}
-		brcmf_net_detach(ifp->ndev, rtnl_locked);
+		brcmf_net_detach(ifp->ndev, locked);
 	} else {
 		/* Only p2p device interfaces which get dynamically created
 		 * end up here. In this case the p2p module should be informed
@@ -947,7 +1039,7 @@ static void brcmf_del_if(struct brcmf_pub *drvr, s32 bsscfgidx,
 		 * serious troublesome side effects. The p2p module will clean
 		 * up the ifp if needed.
 		 */
-		brcmf_p2p_ifp_removed(ifp, rtnl_locked);
+		brcmf_p2p_ifp_removed(ifp, locked);
 		kfree(ifp);
 	}
 
@@ -956,14 +1048,14 @@ static void brcmf_del_if(struct brcmf_pub *drvr, s32 bsscfgidx,
 		drvr->if2bss[ifidx] = BRCMF_BSSIDX_INVALID;
 }
 
-void brcmf_remove_interface(struct brcmf_if *ifp, bool rtnl_locked)
+void brcmf_remove_interface(struct brcmf_if *ifp, bool locked)
 {
 	if (!ifp || WARN_ON(ifp->drvr->iflist[ifp->bsscfgidx] != ifp))
 		return;
 	brcmf_dbg(TRACE, "Enter, bsscfgidx=%d, ifidx=%d\n", ifp->bsscfgidx,
 		  ifp->ifidx);
 	brcmf_proto_del_if(ifp->drvr, ifp);
-	brcmf_del_if(ifp->drvr, ifp->bsscfgidx, rtnl_locked);
+	brcmf_del_if(ifp->drvr, ifp->bsscfgidx, locked);
 }
 
 static int brcmf_psm_watchdog_notify(struct brcmf_if *ifp,
@@ -1264,6 +1356,10 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 	INIT_WORK(&drvr->bus_reset, brcmf_core_bus_reset);
 
 	/* populate debugfs */
+
+	drvr->wiphy->debugfsdir = debugfs_create_dir("brcmfmac",
+			   drvr->wiphy->debugfsdir);
+
 	brcmf_debugfs_add_entry(drvr, "revinfo", brcmf_revinfo_read);
 	debugfs_create_file("reset", 0600, brcmf_debugfs_get_devdir(drvr), drvr,
 			    &bus_reset_fops);
@@ -1537,11 +1633,22 @@ int __init brcmf_core_init(void)
 	if (!schedule_work(&brcmf_driver_work))
 		return -EBUSY;
 
+	/* NEXMON netlink init */
+	cfg.input = nexmon_nl_ioctl_handler;
+	nl_sock = netlink_kernel_create(&init_net, NETLINK_USER, &cfg);
+	if (!nl_sock) {
+		brcmf_err("NEXMON: %s: Error creating netlink socket\n", __FUNCTION__);
+		return -1;
+	}
+
 	return 0;
 }
 
 void __exit brcmf_core_exit(void)
 {
+    /* NEXMON */
+    netlink_kernel_release(nl_sock);
+
 	cancel_work_sync(&brcmf_driver_work);
 
 #ifdef CONFIG_BRCMFMAC_SDIO

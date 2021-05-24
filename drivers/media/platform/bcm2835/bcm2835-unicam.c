@@ -72,6 +72,9 @@
 #include <media/v4l2-fwnode.h>
 #include <media/videobuf2-dma-contig.h>
 
+#include <media/v4l2-async.h>
+#define v4l2_async_notifier_add_subdev __v4l2_async_notifier_add_subdev
+
 #include "vc4-regs-unicam.h"
 
 #define UNICAM_MODULE_NAME	"unicam"
@@ -426,6 +429,8 @@ struct unicam_device {
 	struct clk *clock;
 	/* vpu clock handle */
 	struct clk *vpu_clock;
+	/* vpu clock request */
+	struct clk_request *vpu_req;
 	/* clock status for error handling */
 	bool clocks_enabled;
 	/* V4l2 device */
@@ -798,6 +803,7 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	unsigned int sequence = unicam->sequence;
 	unsigned int i;
 	u32 ista, sta;
+	bool fe;
 	u64 ts;
 
 	sta = reg_read(unicam, UNICAM_STA);
@@ -815,12 +821,18 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 		return IRQ_HANDLED;
 
 	/*
+	 * Look for either the Frame End interrupt or the Packet Capture status
+	 * to signal a frame end.
+	 */
+	fe = (ista & UNICAM_FEI || sta & UNICAM_PI0);
+
+	/*
 	 * We must run the frame end handler first. If we have a valid next_frm
 	 * and we get a simultaneout FE + FS interrupt, running the FS handler
 	 * first would null out the next_frm ptr and we would have lost the
 	 * buffer forever.
 	 */
-	if (ista & UNICAM_FEI || sta & UNICAM_PI0) {
+	if (fe) {
 		/*
 		 * Ensure we have swapped buffers already as we can't
 		 * stop the peripheral. If no buffer is available, use a
@@ -831,7 +843,15 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 			if (!unicam->node[i].streaming)
 				continue;
 
-			if (unicam->node[i].cur_frm)
+			/*
+			 * If cur_frm == next_frm, it means we have not had
+			 * a chance to swap buffers, likely due to having
+			 * multiple interrupts occurring simultaneously (like FE
+			 * + FS + LS). In this case, we cannot signal the buffer
+			 * as complete, as the HW will reuse that buffer.
+			 */
+			if (unicam->node[i].cur_frm &&
+			    unicam->node[i].cur_frm != unicam->node[i].next_frm)
 				unicam_process_buffer_complete(&unicam->node[i],
 							       sequence);
 			unicam->node[i].cur_frm = unicam->node[i].next_frm;
@@ -868,7 +888,7 @@ static irqreturn_t unicam_isr(int irq, void *dev)
 	 * where the HW does not actually swap it if the new frame has
 	 * already started.
 	 */
-	if (ista & (UNICAM_FSI | UNICAM_LCI) && !(ista & UNICAM_FEI)) {
+	if (ista & (UNICAM_FSI | UNICAM_LCI) && !fe) {
 		for (i = 0; i < ARRAY_SIZE(unicam->node); i++) {
 			if (!unicam->node[i].streaming)
 				continue;
@@ -1676,8 +1696,8 @@ static int unicam_start_streaming(struct vb2_queue *vq, unsigned int count)
 	unicam_dbg(1, dev, "Running with %u data lanes\n",
 		   dev->active_data_lanes);
 
-	ret = clk_set_min_rate(dev->vpu_clock, MIN_VPU_CLOCK_RATE);
-	if (ret) {
+	dev->vpu_req = clk_request_start(dev->vpu_clock, MIN_VPU_CLOCK_RATE);
+	if (!dev->vpu_req) {
 		unicam_err(dev, "failed to set up VPU clock\n");
 		goto err_pm_put;
 	}
@@ -1733,8 +1753,7 @@ err_disable_unicam:
 	unicam_disable(dev);
 	clk_disable_unprepare(dev->clock);
 err_vpu_clock:
-	if (clk_set_min_rate(dev->vpu_clock, 0))
-		unicam_err(dev, "failed to reset the VPU clock\n");
+	clk_request_done(dev->vpu_req);
 	clk_disable_unprepare(dev->vpu_clock);
 err_pm_put:
 	unicam_runtime_put(dev);
@@ -1764,9 +1783,7 @@ static void unicam_stop_streaming(struct vb2_queue *vq)
 		unicam_disable(dev);
 
 		if (dev->clocks_enabled) {
-			if (clk_set_min_rate(dev->vpu_clock, 0))
-				unicam_err(dev, "failed to reset the min VPU clock\n");
-
+			clk_request_done(dev->vpu_req);
 			clk_disable_unprepare(dev->vpu_clock);
 			clk_disable_unprepare(dev->clock);
 			dev->clocks_enabled = false;

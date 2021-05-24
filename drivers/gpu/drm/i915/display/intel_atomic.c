@@ -109,16 +109,6 @@ int intel_digital_connector_atomic_set_property(struct drm_connector *connector,
 	return -EINVAL;
 }
 
-static bool blob_equal(const struct drm_property_blob *a,
-		       const struct drm_property_blob *b)
-{
-	if (a && b)
-		return a->length == b->length &&
-			!memcmp(a->data, b->data, a->length);
-
-	return !a == !b;
-}
-
 int intel_digital_connector_atomic_check(struct drm_connector *conn,
 					 struct drm_atomic_state *state)
 {
@@ -133,7 +123,6 @@ int intel_digital_connector_atomic_check(struct drm_connector *conn,
 	struct drm_crtc_state *crtc_state;
 
 	intel_hdcp_atomic_check(conn, old_state, new_state);
-	intel_psr_atomic_check(conn, old_state, new_state);
 
 	if (!new_state->crtc)
 		return 0;
@@ -150,8 +139,7 @@ int intel_digital_connector_atomic_check(struct drm_connector *conn,
 	    new_conn_state->base.picture_aspect_ratio != old_conn_state->base.picture_aspect_ratio ||
 	    new_conn_state->base.content_type != old_conn_state->base.content_type ||
 	    new_conn_state->base.scaling_mode != old_conn_state->base.scaling_mode ||
-	    !blob_equal(new_conn_state->base.hdr_output_metadata,
-			old_conn_state->base.hdr_output_metadata))
+	    !drm_connector_atomic_hdr_metadata_equal(old_state, new_state))
 		crtc_state->mode_changed = true;
 
 	return 0;
@@ -270,14 +258,15 @@ void intel_crtc_free_hw_state(struct intel_crtc_state *crtc_state)
 	intel_crtc_put_color_blobs(crtc_state);
 }
 
-void intel_crtc_copy_color_blobs(struct intel_crtc_state *crtc_state)
+void intel_crtc_copy_color_blobs(struct intel_crtc_state *crtc_state,
+				 const struct intel_crtc_state *from_crtc_state)
 {
 	drm_property_replace_blob(&crtc_state->hw.degamma_lut,
-				  crtc_state->uapi.degamma_lut);
+				  from_crtc_state->uapi.degamma_lut);
 	drm_property_replace_blob(&crtc_state->hw.gamma_lut,
-				  crtc_state->uapi.gamma_lut);
+				  from_crtc_state->uapi.gamma_lut);
 	drm_property_replace_blob(&crtc_state->hw.ctm,
-				  crtc_state->uapi.ctm);
+				  from_crtc_state->uapi.ctm);
 }
 
 /**

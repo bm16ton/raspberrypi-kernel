@@ -4,12 +4,9 @@ dtb-$(CONFIG_ARCH_BCM2835) += overlay_map.dtb
 
 dtbo-$(CONFIG_ARCH_BCM2835) += \
 	act-led.dtbo \
-	ad7890.dtbo \
 	adafruit18.dtbo \
 	adau1977-adc.dtbo \
 	adau7002-simple.dtbo \
-	adc0834.dtbo \
-    adc-spi.dtbo \
 	ads1015.dtbo \
 	ads1115.dtbo \
 	ads7846.dtbo \
@@ -25,7 +22,6 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	anyspi.dtbo \
 	apds9960.dtbo \
 	applepi-dac.dtbo \
-	argonfan.dtbo \
 	at86rf233.dtbo \
 	audioinjector-addons.dtbo \
 	audioinjector-isolated-soundcard.dtbo \
@@ -58,6 +54,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	gpio-ir.dtbo \
 	gpio-ir-tx.dtbo \
 	gpio-key.dtbo \
+	gpio-led.dtbo \
 	gpio-no-bank0-irq.dtbo \
 	gpio-no-irq.dtbo \
 	gpio-poweroff.dtbo \
@@ -65,6 +62,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	hd44780-lcd.dtbo \
 	hdmi-backlight-hwhack-gpio.dtbo \
 	hifiberry-amp.dtbo \
+	hifiberry-amp100.dtbo \
 	hifiberry-dac.dtbo \
 	hifiberry-dacplus.dtbo \
 	hifiberry-dacplusadc.dtbo \
@@ -92,8 +90,6 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	i2c5.dtbo \
 	i2c6.dtbo \
 	i2s-gpio28-31.dtbo \
-	ili9486-fbtft.dtbo \
-	ili9486-drm.dtbo \
 	ilitek251x.dtbo \
 	imx219.dtbo \
 	imx290.dtbo \
@@ -107,8 +103,6 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	justboom-both.dtbo \
 	justboom-dac.dtbo \
 	justboom-digi.dtbo \
-	l3g4200d-i2c.dtbo \
-	l3g4200d-spi.dtbo \
 	ltc294x.dtbo \
 	max98357a.dtbo \
 	maxtherm.dtbo \
@@ -125,6 +119,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	merus-amp.dtbo \
 	midi-uart0.dtbo \
 	midi-uart1.dtbo \
+	minipitft13.dtbo \
 	miniuart-bt.dtbo \
 	mmc.dtbo \
 	mpu6050.dtbo \
@@ -134,9 +129,13 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	ov9281.dtbo \
 	papirus.dtbo \
 	pca953x.dtbo \
+	pcie-32bit-dma.dtbo \
 	pibell.dtbo \
 	pifacedigital.dtbo \
 	pifi-40.dtbo \
+	pifi-dac-hd.dtbo \
+	pifi-dac-zero.dtbo \
+	pifi-mini-210.dtbo \
 	piglow.dtbo \
 	piscreen.dtbo \
 	piscreen2r.dtbo \
@@ -210,15 +209,18 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
 	uart4.dtbo \
 	uart5.dtbo \
 	udrc.dtbo \
+	ugreen-dabboard.dtbo \
 	upstream.dtbo \
 	upstream-pi4.dtbo \
 	vc4-fkms-v3d.dtbo \
 	vc4-kms-dsi-7inch.dtbo \
+	vc4-kms-dsi-lt070me05000.dtbo \
+	vc4-kms-dsi-lt070me05000-v2.dtbo \
 	vc4-kms-kippah-7inch.dtbo \
 	vc4-kms-v3d.dtbo \
 	vc4-kms-v3d-pi4.dtbo \
+	vc4-kms-vga666.dtbo \
 	vga666.dtbo \
-	waveshare-st7789v.dtbo \
 	w1-gpio.dtbo \
 	w1-gpio-pullup.dtbo \
 	w5500.dtbo \

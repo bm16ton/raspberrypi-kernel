@@ -28,6 +28,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/gpio/machine.h> /* FIXME: using chip internals */
 #include <linux/gpio/driver.h> /* FIXME: using chip internals */
+#include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/spi/spi.h>
 
@@ -68,7 +69,7 @@
 #define BCM2835_SPI_FIFO_SIZE		64
 #define BCM2835_SPI_FIFO_SIZE_3_4	48
 #define BCM2835_SPI_DMA_MIN_LENGTH	96
-#define BCM2835_SPI_NUM_CS		4   /* raise as necessary */
+#define BCM2835_SPI_NUM_CS		24  /* more than enough */
 #define BCM2835_SPI_MODE_BITS	(SPI_CPOL | SPI_CPHA | SPI_CS_HIGH \
 				| SPI_NO_CS | SPI_3WIRE)
 
@@ -390,7 +391,7 @@ static irqreturn_t bcm2835_spi_interrupt(int irq, void *dev_id)
 		/* Transfer complete - reset SPI HW */
 		bcm2835_spi_reset_hw(bs);
 		/* wake up the framework */
-		complete(&bs->ctlr->xfer_completion);
+		spi_finalize_current_transfer(bs->ctlr);
 	}
 
 	return IRQ_HANDLED;
@@ -612,7 +613,7 @@ static void bcm2835_spi_dma_rx_done(void *data)
 	bcm2835_spi_reset_hw(bs);
 
 	/* and mark as completed */;
-	complete(&ctlr->xfer_completion);
+	spi_finalize_current_transfer(ctlr);
 }
 
 /**
@@ -644,7 +645,7 @@ static void bcm2835_spi_dma_tx_done(void *data)
 
 	bcm2835_spi_undo_prologue(bs);
 	bcm2835_spi_reset_hw(bs);
-	complete(&ctlr->xfer_completion);
+	spi_finalize_current_transfer(ctlr);
 }
 
 /**
@@ -1090,6 +1091,16 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 	unsigned long hz_per_byte, byte_limit;
 	u32 cs = bs->prepare_cs[spi->chip_select];
 
+	if (unlikely(!tfr->len)) {
+		static int warned;
+
+		if (!warned)
+			dev_warn(&spi->dev,
+				 "zero-length SPI transfer ignored\n");
+		warned = 1;
+		return 0;
+	}
+
 	/* set clock */
 	spi_hz = tfr->speed_hz;
 	clk_hz = clk_get_rate(bs->clk);
@@ -1282,6 +1293,11 @@ static int bcm2835_spi_probe(struct platform_device *pdev)
 	struct bcm2835_spi *bs;
 	int err;
 
+	if (of_gpio_named_count(pdev->dev.of_node, "cs-gpios") >
+	    BCM2835_SPI_NUM_CS)
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "too many chip selects\n");
+
 	ctlr = devm_spi_alloc_master(&pdev->dev, ALIGN(sizeof(*bs),
 						  dma_get_cache_alignment()));
 	if (!ctlr)
@@ -1310,6 +1326,8 @@ static int bcm2835_spi_probe(struct platform_device *pdev)
 	if (IS_ERR(bs->clk))
 		return dev_err_probe(&pdev->dev, PTR_ERR(bs->clk),
 				     "could not get clk\n");
+
+	ctlr->max_speed_hz = clk_get_rate(bs->clk) / 2;
 
 	bs->irq = platform_get_irq(pdev, 0);
 	if (bs->irq <= 0)

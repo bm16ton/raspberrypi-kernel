@@ -41,6 +41,15 @@ static int pxe1610_identify(struct i2c_client *client,
 				info->vrm_version[i] = vr13;
 				break;
 			default:
+				/*
+				 * If prior pages are available limit operation
+				 * to them
+				 */
+				if (i != 0) {
+					info->pages = i;
+					return 0;
+				}
+
 				return -ENODEV;
 			}
 		}
@@ -131,7 +140,6 @@ static struct i2c_driver pxe1610_driver = {
 			.name = "pxe1610",
 			},
 	.probe_new = pxe1610_probe,
-	.remove = pmbus_do_remove,
 	.id_table = pxe1610_id,
 };
 

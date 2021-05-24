@@ -1,0 +1,23 @@
+--- drivers/gpu/drm/vc4/vc4_kms.c
++++ drivers/gpu/drm/vc4/vc4_kms.c
+@@ -412,8 +417,20 @@ vc4_atomic_complete_commit(struct drm_atomic_state *state)
+ 
+ 	drm_atomic_helper_cleanup_planes(dev, state);
+ 
++	drm_atomic_helper_commit_cleanup_done(state);
++
+ 	if (vc4->hvs->hvs5)
+ 		clk_set_min_rate(hvs->core_clk, 0);
++
++	drm_atomic_state_put(state);
++}
++
++static void commit_work(struct work_struct *work)
++{
++	struct drm_atomic_state *state = container_of(work,
++						      struct drm_atomic_state,
++						      commit_work);
++	vc4_atomic_complete_commit(state);
+ }
+ 
+ static int vc4_atomic_commit_setup(struct drm_atomic_state *state)
